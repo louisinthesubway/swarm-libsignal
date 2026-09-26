@@ -10,7 +10,9 @@ use const_str::ip_addr;
 use libsignal_net::chat::RECOMMENDED_CHAT_WS_CONFIG;
 use libsignal_net::connect_state::ServiceName;
 use libsignal_net::enclave::{Cdsi, EnclaveEndpoint, EndpointParams, MrEnclave, SvrSgx};
-use libsignal_net::env::{ConnectionConfig, DomainConfig, Env, KeyTransConfig, Svr2Env, SvrBEnv};
+use libsignal_net::env::{
+    ConnectionConfig, DomainConfig, EnclaveServices, Env, KeyTransConfig, Svr2Env, SvrBEnv,
+};
 use libsignal_net::infra::RECOMMENDED_WS_CONFIG;
 use libsignal_net::infra::certs::RootCertificates;
 use libsignal_net::infra::route::HttpVersion;
@@ -133,5 +135,7 @@ pub(crate) fn localhost_test_env_with_ports(
         ),
         keytrans_config: DUMMY_KEYTRANS_CONFIG,
         reflector_providers: || &[],
+        // The mock server stands in for the enclave services too.
+        enclave_services: EnclaveServices::Available,
     }
 }

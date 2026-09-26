@@ -42,6 +42,37 @@ config.truncateThreshold = 0;
 
 const userAgent = 'test';
 
+describe('SWARM environments', () => {
+  // SWARM additions. See docs/SWARM-CHANGES.md.
+  const swarmEnvironments = [
+    [Environment.Swarm, 'chat.swarm.green'],
+    [Environment.SwarmStaging, 'staging.chat.swarm.green'],
+  ] as const;
+
+  for (const [env, expectedHost] of swarmEnvironments) {
+    it(`Net accepts Environment ${Environment[env]}`, () => {
+      const net = new Net({ env, userAgent });
+      assert.isDefined(net._connectionManager);
+      // Enabling censorship circumvention must not throw: SWARM has no reflectors.
+      net.setCensorshipCircumventionEnabled(true);
+      net.setCensorshipCircumventionEnabled(false);
+      assert.strictEqual(
+        TESTING_ConnectionManager_isUsingProxy(net._connectionManager),
+        0
+      );
+      // The host is compiled into the library; this only documents the mapping.
+      assert.isTrue(expectedHost.endsWith('.swarm.green'));
+    });
+  }
+
+  it('numbers the environments as the Rust bridge does', () => {
+    assert.strictEqual(Environment.Staging, 0);
+    assert.strictEqual(Environment.Production, 1);
+    assert.strictEqual(Environment.Swarm, 2);
+    assert.strictEqual(Environment.SwarmStaging, 3);
+  });
+});
+
 describe('Net class', () => {
   it('handles network change events', () => {
     // There's no feedback from this, we're just making sure it doesn't normally crash or throw.

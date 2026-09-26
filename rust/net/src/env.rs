@@ -28,7 +28,10 @@ use nonzero_ext::nonzero;
 use rand::seq::SliceRandom;
 use rand::{Rng, rng};
 
-use crate::certs::{PROXY_G_ROOT_CERTIFICATES, SIGNAL_ROOT_CERTIFICATES};
+use crate::certs::{
+    NO_ROOT_CERTIFICATES, PROXY_G_ROOT_CERTIFICATES, SIGNAL_ROOT_CERTIFICATES,
+    SWARM_ROOT_CERTIFICATES,
+};
 use crate::chat::RECOMMENDED_CHAT_WS_CONFIG;
 use crate::connect_state::ServiceName;
 use crate::enclave::{Cdsi, EnclaveEndpoint, EndpointParams, MrEnclave, SvrSgx};
@@ -249,6 +252,108 @@ const DOMAIN_CONFIG_SVRB_PROD: DomainConfig = DomainConfig {
         ip_addr!(v6, "2603:1030:c02:5::632"),
         ip_addr!(v6, "2603:1030:f00:3::27"),
     ],
+};
+
+// ---------------------------------------------------------------------------
+// SWARM additions. See docs/SWARM-CHANGES.md.
+//
+// Nothing above this block is changed apart from the `crate::certs` import, and no SWARM
+// configuration references a Signal hostname, Signal's certificates or Signal's proxies.
+// ---------------------------------------------------------------------------
+
+/// The SWARM chat service host.
+pub const SWARM_CHAT_HOSTNAME: &str = "chat.swarm.green";
+
+/// The SWARM staging chat service host.
+pub const SWARM_STAGING_CHAT_HOSTNAME: &str = "staging.chat.swarm.green";
+
+/// Hostname used for services a SWARM environment does not deploy.
+///
+/// `.invalid` is reserved by RFC 2606 and can never resolve, so an attempt to use such a service
+/// fails while connecting instead of reaching somebody else's server.
+const SWARM_SERVICE_NOT_DEPLOYED_HOSTNAME: &str = "service-not-deployed.swarm.invalid";
+
+/// The enclave identity used for the SWARM placeholder enclave endpoints.
+///
+/// It is not a real MRENCLAVE value; attestation against it can never succeed.
+const SWARM_NO_ENCLAVE_ID: &[u8] = b"swarm:no-enclave-services";
+
+const SWARM_NO_RAFT_CONFIG: &attest::svr2::RaftConfig = &attest::svr2::RaftConfig {
+    min_voting_replicas: 1,
+    max_voting_replicas: 1,
+    super_majority: 0,
+    group_id: 0,
+    attestation_timeout: 0,
+    db_version: 0,
+    simulated: false,
+};
+
+const SWARM_NO_CDSI_PARAMS: EndpointParams<'static, Cdsi> = EndpointParams {
+    mr_enclave: MrEnclave::new(SWARM_NO_ENCLAVE_ID),
+    raft_config: (),
+};
+
+const SWARM_NO_SVR_PARAMS: EndpointParams<'static, SvrSgx> = EndpointParams {
+    mr_enclave: MrEnclave::new(SWARM_NO_ENCLAVE_ID),
+    raft_config: SWARM_NO_RAFT_CONFIG,
+};
+
+/// A [`DomainConfig`] for a service this environment does not deploy: an unresolvable hostname,
+/// no fallback IP addresses, no proxies and an empty trust store.
+const fn swarm_service_not_deployed(service: ServiceName) -> DomainConfig {
+    DomainConfig {
+        ip_v4: &[],
+        ip_v6: &[],
+        connect: ConnectionConfig {
+            service,
+            hostname: SWARM_SERVICE_NOT_DEPLOYED_HOSTNAME,
+            port: DEFAULT_HTTPS_PORT,
+            cert: NO_ROOT_CERTIFICATES,
+            min_tls_version: Some(SslVersion::TLS1_3),
+            http_version: Some(HttpVersion::Http1_1),
+            confirmation_header_name: None,
+            proxy: None,
+        },
+    }
+}
+
+const DOMAIN_CONFIG_CHAT_SWARM: DomainConfig = DomainConfig {
+    // No hardcoded IP addresses: SWARM hosts are resolved through DNS. (An empty static fallback
+    // entry is filtered out by the resolver, so this costs nothing.)
+    ip_v4: &[],
+    ip_v6: &[],
+    connect: ConnectionConfig {
+        service: ServiceName("chat"),
+        hostname: SWARM_CHAT_HOSTNAME,
+        port: DEFAULT_HTTPS_PORT,
+        cert: SWARM_ROOT_CERTIFICATES,
+        // The SWARM chat host must serve TLS 1.3.
+        min_tls_version: Some(SslVersion::TLS1_3),
+        // The websocket transport. gRPC over HTTP/2 is not offered by the SWARM server yet.
+        http_version: Some(HttpVersion::Http1_1),
+        // The SWARM chat server (a Signal-Server fork) still sends `x-signal-timestamp`, which is
+        // how a real server response is told apart from a captive portal's.
+        confirmation_header_name: Some(TIMESTAMP_HEADER_NAME),
+        // No domain fronting: SWARM operates no reflector proxies, and Signal's must not be used.
+        proxy: None,
+    },
+};
+
+const DOMAIN_CONFIG_CHAT_SWARM_STAGING: DomainConfig = DomainConfig {
+    ip_v4: &[],
+    ip_v6: &[],
+    connect: ConnectionConfig {
+        service: ServiceName("chat"),
+        hostname: SWARM_STAGING_CHAT_HOSTNAME,
+        port: DEFAULT_HTTPS_PORT,
+        cert: SWARM_ROOT_CERTIFICATES,
+        // Staging is more permissive: a self-hosted stack may terminate TLS at TLS 1.2 ...
+        min_tls_version: Some(SslVersion::TLS1_2),
+        http_version: Some(HttpVersion::Http1_1),
+        // ... and may not add the timestamp header.
+        confirmation_header_name: None,
+        proxy: None,
+    },
 };
 
 pub const PROXY_CONFIG_F_PROD: ProxyConfig = ProxyConfig {
@@ -802,6 +907,21 @@ impl<'a> Svr2Env<'a> {
     }
 }
 
+/// Whether an environment deploys the SGX-backed side services: contact discovery (CDSI) and
+/// secure value recovery (SVR2, SVRB).
+///
+/// Upstream has no way to say "this environment has none of those", because Signal always
+/// deploys them; [`Env`] therefore still carries endpoints for them. In an environment that
+/// reports [`EnclaveServices::Absent`] those endpoints are placeholders that cannot connect (see
+/// `swarm_service_not_deployed`), and callers should treat the features as switched off.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EnclaveServices {
+    /// CDSI/SVR2/SVRB endpoints are real and may be used.
+    Available,
+    /// This environment deploys no enclave services; using them fails while connecting.
+    Absent,
+}
+
 pub struct Env<'a> {
     pub cdsi: EnclaveEndpoint<'a, Cdsi>,
     pub svr2: Svr2Env<'a>,
@@ -810,6 +930,8 @@ pub struct Env<'a> {
     pub chat_ws_config: crate::chat::ws::Config,
     pub keytrans_config: KeyTransConfig,
     pub reflector_providers: fn() -> &'static [ReflectorProviderConfig],
+    /// Whether this environment deploys CDSI and SVR at all.
+    pub enclave_services: EnclaveServices,
 }
 
 impl<'a> Env<'a> {
@@ -828,12 +950,17 @@ impl<'a> Env<'a> {
             chat_ws_config: _,
             keytrans_config: _,
             reflector_providers: _,
+            enclave_services,
         } = self;
 
-        let mut result = HashMap::from_iter([
-            cdsi.domain_config.static_fallback(rng.as_mut()),
-            chat_domain_config.static_fallback(rng.as_mut()),
-        ]);
+        let mut result =
+            HashMap::from_iter([chat_domain_config.static_fallback(rng.as_mut())]);
+        if *enclave_services == EnclaveServices::Absent {
+            // The enclave endpoints are placeholders; don't put their unresolvable hostname in
+            // the fallback map.
+            return result;
+        }
+        result.extend([cdsi.domain_config.static_fallback(rng.as_mut())]);
         let svr_endpoints = svr_b
             .current_and_previous()
             .chain(svr2.current_and_previous());
@@ -884,6 +1011,7 @@ pub const STAGING: Env<'static> = Env {
     },
     keytrans_config: KEYTRANS_CONFIG_STAGING,
     reflector_providers: || &*REFLECTOR_PROVIDERS_STAGING,
+    enclave_services: EnclaveServices::Available,
 };
 
 pub const PROD: Env<'static> = Env {
@@ -928,7 +1056,72 @@ pub const PROD: Env<'static> = Env {
     },
     keytrans_config: KEYTRANS_CONFIG_PROD,
     reflector_providers: || &*REFLECTOR_PROVIDERS_PROD,
+    enclave_services: EnclaveServices::Available,
 };
+
+// ---------------------------------------------------------------------------
+// SWARM environments. See docs/SWARM-CHANGES.md.
+// ---------------------------------------------------------------------------
+
+/// SWARM operates no censorship-circumvention reflectors.
+fn swarm_no_reflector_providers() -> &'static [ReflectorProviderConfig] {
+    &[]
+}
+
+/// Builds a SWARM environment around a chat [`DomainConfig`].
+///
+/// SWARM deploys no enclave services, so CDSI/SVR2/SVRB get placeholder endpoints that cannot
+/// connect, and there are no censorship-circumvention reflectors.
+const fn swarm_env(chat_domain_config: DomainConfig) -> Env<'static> {
+    Env {
+        chat_domain_config,
+        chat_ws_config: RECOMMENDED_CHAT_WS_CONFIG,
+        cdsi: EnclaveEndpoint {
+            domain_config: swarm_service_not_deployed(ServiceName("cdsi")),
+            ws_config: RECOMMENDED_WS_CONFIG,
+            params: SWARM_NO_CDSI_PARAMS,
+        },
+        svr2: Svr2Env {
+            current: EnclaveEndpoint {
+                domain_config: swarm_service_not_deployed(ServiceName("svr2")),
+                ws_config: RECOMMENDED_WS_CONFIG,
+                params: SWARM_NO_SVR_PARAMS,
+            },
+            previous: None,
+        },
+        svr_b: SvrBEnv::new(
+            [
+                Some(EnclaveEndpoint {
+                    domain_config: swarm_service_not_deployed(ServiceName("svrb")),
+                    ws_config: RECOMMENDED_WS_CONFIG,
+                    params: SWARM_NO_SVR_PARAMS,
+                }),
+                None,
+                None,
+            ],
+            [None, None, None],
+        ),
+        // Key transparency is a SWARM-server feature that does not exist yet; the key material
+        // below is all zeroes, so no key-transparency proof can verify against it.
+        keytrans_config: KeyTransConfig {
+            signing_key_material: &[0; 32],
+            vrf_key_material: &[0; 32],
+            auditor_key_material: &[&[0; 32]],
+        },
+        reflector_providers: swarm_no_reflector_providers,
+        enclave_services: EnclaveServices::Absent,
+    }
+}
+
+/// The SWARM production environment: `chat.swarm.green`, publicly trusted TLS, no enclave
+/// services, no domain fronting.
+pub const SWARM: Env<'static> = swarm_env(DOMAIN_CONFIG_CHAT_SWARM);
+
+/// The SWARM staging environment: `staging.chat.swarm.green`.
+///
+/// For a stack on this machine, use the existing local-test-server path instead (it accepts a
+/// port and a self-signed root certificate); see docs/HOW-DESKTOP-USES-IT.md.
+pub const SWARM_STAGING: Env<'static> = swarm_env(DOMAIN_CONFIG_CHAT_SWARM_STAGING);
 
 pub mod constants {
     pub const CHAT_WEBSOCKET_PATH: &str = "/v1/websocket/";
@@ -953,6 +1146,130 @@ mod test {
     use test_case::test_matrix;
 
     use super::*;
+
+    // ---------------------------------------------------------------------
+    // SWARM tests. See docs/SWARM-CHANGES.md.
+    // ---------------------------------------------------------------------
+
+    /// Every hostname an environment can dial.
+    fn all_hostnames(env: &Env<'static>) -> Vec<&'static str> {
+        let mut hostnames = vec![env.chat_domain_config.connect.hostname];
+        hostnames.push(env.cdsi.domain_config.connect.hostname);
+        hostnames.extend(
+            env.svr2
+                .current_and_previous()
+                .chain(env.svr_b.current_and_previous())
+                .map(|endpoint| endpoint.domain_config.connect.hostname),
+        );
+        for config in [&env.chat_domain_config, &env.cdsi.domain_config] {
+            if let Some(proxy) = &config.connect.proxy {
+                for proxy_config in &proxy.configs {
+                    hostnames.push(proxy_config.http_host);
+                    hostnames.extend(proxy_config.sni_list.iter().copied());
+                }
+            }
+        }
+        hostnames
+    }
+
+    #[test_matrix([&SWARM, &SWARM_STAGING])]
+    fn swarm_env_never_references_signal(env: &Env<'static>) {
+        for hostname in all_hostnames(env) {
+            assert!(
+                !hostname.contains("signal"),
+                "SWARM environment would dial {hostname}"
+            );
+        }
+        assert!((env.reflector_providers)().is_empty());
+    }
+
+    #[test_matrix([&SWARM, &SWARM_STAGING])]
+    fn swarm_chat_config(env: &Env<'static>) {
+        let connect = &env.chat_domain_config.connect;
+        assert!(
+            connect.hostname.ends_with(".swarm.green"),
+            "unexpected chat hostname {}",
+            connect.hostname
+        );
+        assert_eq!(connect.port, DEFAULT_HTTPS_PORT);
+        assert_eq!(connect.cert, SWARM_ROOT_CERTIFICATES);
+        assert_ne!(connect.cert, SIGNAL_ROOT_CERTIFICATES);
+        // No domain fronting through anybody else's reflectors.
+        assert!(connect.proxy.is_none());
+        // Direct connections only, and nothing but the hostname is dialed.
+        let params = connect.connection_params_with_fallback();
+        assert_eq!(params.len(), 1);
+        assert_eq!(params[0].route_type, RouteType::Direct);
+        assert_eq!(&*params[0].http_host, connect.hostname);
+        assert_eq!(&*params[0].transport.sni, connect.hostname);
+    }
+
+    #[test]
+    fn swarm_prod_chat_requires_tls13_and_confirmation_header() {
+        let connect = &SWARM.chat_domain_config.connect;
+        assert_eq!(connect.min_tls_version, Some(SslVersion::TLS1_3));
+        assert_eq!(
+            connect
+                .direct_connection_params()
+                .connection_confirmation_header
+                .as_ref()
+                .map(|header| header.as_str()),
+            Some(TIMESTAMP_HEADER_NAME)
+        );
+    }
+
+    #[test_matrix([&SWARM, &SWARM_STAGING])]
+    fn swarm_env_has_no_enclave_services(env: &Env<'static>) {
+        assert_eq!(env.enclave_services, EnclaveServices::Absent);
+        // The placeholder endpoints cannot connect: unresolvable hostname, no fallback IPs and an
+        // empty trust store.
+        let placeholders = [&env.cdsi.domain_config]
+            .into_iter()
+            .chain(
+                env.svr2
+                    .current_and_previous()
+                    .chain(env.svr_b.current_and_previous())
+                    .map(|endpoint| &endpoint.domain_config),
+            );
+        for domain_config in placeholders {
+            assert_eq!(
+                domain_config.connect.hostname,
+                SWARM_SERVICE_NOT_DEPLOYED_HOSTNAME
+            );
+            assert!(domain_config.connect.hostname.ends_with(".invalid"));
+            assert_eq!(domain_config.connect.cert, NO_ROOT_CERTIFICATES);
+            assert!(domain_config.ip_v4.is_empty());
+            assert!(domain_config.ip_v6.is_empty());
+            assert!(domain_config.connect.proxy.is_none());
+        }
+        // SVR2 and SVRB have no previous enclaves to migrate from.
+        assert!(env.svr2.previous.is_none());
+        assert_eq!(env.svr_b.previous().count(), 0);
+    }
+
+    #[test_matrix([&SWARM, &SWARM_STAGING])]
+    fn swarm_static_fallback_holds_only_the_chat_host(env: &Env<'static>) {
+        let fallback = env.static_fallback(StaticIpOrder::HARDCODED);
+        assert_eq!(
+            fallback.keys().copied().collect::<Vec<_>>(),
+            vec![env.chat_domain_config.connect.hostname]
+        );
+    }
+
+    #[test]
+    fn swarm_and_signal_environments_are_distinct() {
+        for signal_env in [&STAGING, &PROD] {
+            assert_ne!(
+                signal_env.chat_domain_config.connect.hostname,
+                SWARM.chat_domain_config.connect.hostname
+            );
+            assert_eq!(signal_env.enclave_services, EnclaveServices::Available);
+        }
+        assert_ne!(
+            SWARM.chat_domain_config.connect.hostname,
+            SWARM_STAGING.chat_domain_config.connect.hostname
+        );
+    }
 
     #[test_matrix([&DOMAIN_CONFIG_CHAT, &DOMAIN_CONFIG_CHAT_STAGING])]
     fn chat_has_confirmation_header(config: &DomainConfig) {
