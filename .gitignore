@@ -36,3 +36,6 @@ java/server/src/main/resources/*.dll
 Brewfile.lock.json
 
 __pycache__
+
+# SWARM: private root CA, never committed.
+rust/net/res/swarm/swarm-root-ca.pem

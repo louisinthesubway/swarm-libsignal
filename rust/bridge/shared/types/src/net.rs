@@ -48,6 +48,12 @@ pub use tokio::TokioAsyncContext;
 pub enum Environment {
     Staging = 0,
     Prod = 1,
+    // SWARM additions. See docs/SWARM-CHANGES.md. The numbering continues upstream's, so an app
+    // that only knows Staging/Prod keeps working.
+    /// The SWARM network: `chat.swarm.green`.
+    Swarm = 2,
+    /// The SWARM staging network: `staging.chat.swarm.green`.
+    SwarmStaging = 3,
 }
 
 impl Environment {
@@ -55,6 +61,8 @@ impl Environment {
         match self {
             Self::Staging => libsignal_net::env::STAGING,
             Self::Prod => libsignal_net::env::PROD,
+            Self::Swarm => libsignal_net::env::SWARM,
+            Self::SwarmStaging => libsignal_net::env::SWARM_STAGING,
         }
     }
 }
@@ -201,17 +209,21 @@ impl ConnectionManager {
     pub fn set_censorship_circumvention_enabled(&self, enable: bool) {
         let reflector_proxies = enable.then(|| {
             let providers = (self.env.reflector_providers)();
-            assert!(
-                !providers.is_empty(),
-                // This is not *technically* true, because the `localhost_test_env_with_ports` contains an emptly list
-                // of reflector providers, but that's only used in tests.
-                "reflector providers are configured at compile time, so they should never be empty"
-            );
-            ConnectionProxyConfig::Reflector {
+            if providers.is_empty() {
+                // SWARM modification: upstream asserted here, because Signal's environments always
+                // have reflectors. An environment with none (SWARM, and the localhost test env)
+                // simply cannot circumvent censorship this way, so this is a no-op rather than a
+                // crash.
+                log::info!(
+                    "set_censorship_circumvention_enabled: no reflector providers in this environment; ignored"
+                );
+                return None;
+            }
+            Some(ConnectionProxyConfig::Reflector {
                 providers,
                 user_agent: self.user_agent.header_value(),
-            }
-        });
+            })
+        }).flatten();
         log::info!("set_censorship_circumvention_enabled({enable})");
         self.transport_connector
             .lock()
@@ -352,6 +364,8 @@ mod test {
 
     #[test_case(Environment::Staging; "staging")]
     #[test_case(Environment::Prod; "prod")]
+    #[test_case(Environment::Swarm; "swarm")]
+    #[test_case(Environment::SwarmStaging; "swarm_staging")]
     fn can_create_connection_manager(env: Environment) {
         let _ = ConnectionManager::new(
             env,
@@ -399,6 +413,32 @@ mod test {
                     && user_agent.to_str().expect("valid header")
                         .starts_with("test-user-agent libsignal/")
         );
+    }
+
+    #[test_case(Environment::Swarm; "swarm")]
+    #[test_case(Environment::SwarmStaging; "swarm_staging")]
+    fn swarm_environment_has_no_censorship_circumvention(env: Environment) {
+        use libsignal_net::env::EnclaveServices;
+
+        let cm = ConnectionManager::new(
+            env,
+            "test-user-agent",
+            Default::default(),
+            BuildVariant::Production,
+        );
+        assert_eq!(cm.env().enclave_services, EnclaveServices::Absent);
+        assert!(
+            cm.env()
+                .chat_domain_config
+                .connect
+                .hostname
+                .ends_with(".swarm.green")
+        );
+
+        // Enabling it is ignored, rather than panicking or reaching somebody else's reflector.
+        cm.set_censorship_circumvention_enabled(true);
+        let guard = cm.transport_connector.lock().expect("not poisoned");
+        assert_matches!(guard.proxy(), Ok(DirectOrProxyMode::DirectOnly));
     }
 
     #[test_matrix((true, false))]
