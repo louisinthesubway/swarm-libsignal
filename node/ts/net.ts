@@ -58,6 +58,21 @@ export * from './net/SvrB.js';
 export enum Environment {
   Staging = 0,
   Production = 1,
+  /**
+   * The SWARM network: chat host `chat.swarm.green`, TLS 1.3, publicly trusted
+   * certificates (plus any private SWARM root compiled into the library).
+   *
+   * This environment deploys no contact discovery (CDSI) and no secure value
+   * recovery (SVR2/SVRB): those endpoints are placeholders that cannot connect,
+   * so those features must stay switched off in the app. There is also no
+   * censorship-circumvention proxy, so {@link Net.setCensorshipCircumventionEnabled}
+   * is a no-op here.
+   *
+   * See docs/SWARM-CHANGES.md and docs/HOW-DESKTOP-USES-IT.md in this repository.
+   */
+  Swarm = 2,
+  /** As {@link Environment.Swarm}, but `staging.chat.swarm.green` and TLS 1.2 or better. */
+  SwarmStaging = 3,
 }
 
 /**

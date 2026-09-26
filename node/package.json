@@ -1,7 +1,13 @@
 {
   "name": "@signalapp/libsignal-client",
-  "version": "0.102.3",
-  "repository": "github:signalapp/libsignal",
+  "version": "0.102.3-swarm.1",
+  "repository": "github:Swarm-Official/swarm-libsignal",
+  "swarm": {
+    "upstream": "v0.102.3",
+    "chatHost": "chat.swarm.green",
+    "environments": ["Swarm", "SwarmStaging"],
+    "docs": "docs/SWARM-CHANGES.md"
+  },
   "license": "AGPL-3.0-only",
   "type": "module",
   "main": "dist/index.js",

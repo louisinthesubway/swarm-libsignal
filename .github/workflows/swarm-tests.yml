@@ -1,0 +1,71 @@
+name: "SWARM - tests"
+
+# Fast validation of the SWARM environment changes (docs/SWARM-CHANGES.md).
+# Nothing here contacts any server.
+
+on:
+  push:
+    branches: [swarm-main]
+  pull_request:
+    branches: [swarm-main]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: 1
+
+jobs:
+  rust:
+    name: Rust (libsignal-net + bridge types)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the pinned toolchain
+        run: rustup toolchain install "$(cat rust-toolchain)" --profile minimal --component rustfmt
+
+      - name: Install protoc
+        run: ./bin/install_protoc_linux
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: swarm-tests
+          cache-on-failure: true
+
+      - name: cargo test -p libsignal-net (lib)
+        run: cargo test -p libsignal-net --lib
+
+      - name: cargo test -p libsignal-bridge-types (lib)
+        run: cargo test -p libsignal-bridge-types --lib
+
+      - name: Check the formatting of the files we changed
+        continue-on-error: true
+        run: rustfmt --edition 2024 --check rust/net/src/env.rs rust/net/src/certs.rs rust/net/build.rs rust/bridge/shared/types/src/net.rs rust/bridge/shared/testing/src/net_env.rs
+
+  node-typescript:
+    name: Node TypeScript
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - run: npm ci
+        working-directory: node
+
+      - run: npm run tsc
+        working-directory: node
+
+      - run: npm run lint
+        working-directory: node
+
+      - name: Prettier
+        run: npm run format -c
+        working-directory: node
