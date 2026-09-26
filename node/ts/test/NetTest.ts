@@ -25,6 +25,7 @@ import {
   ProvisioningConnection,
   ProvisioningConnectionListener,
   SIGNAL_TLS_PROXY_SCHEME,
+  SWARM_HOSTS,
   TokioAsyncContext,
   UnauthenticatedChatConnection,
 } from '../net.js';
@@ -64,6 +65,16 @@ describe('SWARM environments', () => {
       assert.isTrue(expectedHost.endsWith('.swarm.green'));
     });
   }
+
+  it('records the settled SWARM hosts', () => {
+    assert.strictEqual(SWARM_HOSTS.chat, 'chat.swarm.green');
+    assert.strictEqual(SWARM_HOSTS.cdn, 'cdn.chat.swarm.green');
+    assert.strictEqual(SWARM_HOSTS.sfu, 'sfu.chat.swarm.green');
+    assert.strictEqual(SWARM_HOSTS.registration, 'reg.chat.swarm.green');
+    for (const host of Object.values(SWARM_HOSTS)) {
+      assert.isTrue(host.endsWith('.swarm.green'), host);
+    }
+  });
 
   it('numbers the environments as the Rust bridge does', () => {
     assert.strictEqual(Environment.Staging, 0);

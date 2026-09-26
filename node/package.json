@@ -5,6 +5,10 @@
   "swarm": {
     "upstream": "v0.101.2",
     "chatHost": "chat.swarm.green",
+    "stagingChatHost": "staging.chat.swarm.green",
+    "cdnHost": "cdn.chat.swarm.green",
+    "sfuHost": "sfu.chat.swarm.green",
+    "registrationHost": "reg.chat.swarm.green",
     "environments": ["Swarm", "SwarmStaging"],
     "docs": "docs/SWARM-CHANGES.md"
   },

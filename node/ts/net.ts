@@ -42,6 +42,21 @@ export * from './net/Registration.js';
 export * from './net/Svr2.js';
 export * from './net/SvrB.js';
 
+/**
+ * The SWARM service hosts, settled by the owner on 2026-09-26.
+ *
+ * Only `chat` is used by this library ({@link Environment.Swarm} connects to it).
+ * The others are recorded here so an app can check its own configuration against one
+ * authoritative list: libsignal has no CDN, calling or registration configuration.
+ */
+export const SWARM_HOSTS = {
+  chat: 'chat.swarm.green',
+  stagingChat: 'staging.chat.swarm.green',
+  cdn: 'cdn.chat.swarm.green',
+  sfu: 'sfu.chat.swarm.green',
+  registration: 'reg.chat.swarm.green',
+} as const;
+
 // This must match the libsignal-bridge Rust enum of the same name.
 export enum Environment {
   Staging = 0,
