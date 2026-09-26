@@ -50,8 +50,7 @@ const EXTRA_ROOT_CA_PEM_VAR: &str = "SWARM_TLS_ROOT_CA_PEM";
 fn swarm_root_certificates() {
     println!("cargo:rerun-if-env-changed={EXTRA_ROOT_CA_PEM_VAR}");
 
-    let manifest_dir =
-        PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("set by cargo"));
+    let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("set by cargo"));
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("set by cargo"));
     let res_dir = manifest_dir.join("res").join("swarm");
 
@@ -113,8 +112,7 @@ fn swarm_root_certificates() {
             .map(|literal| format!("    {literal},\n"))
             .collect::<String>()
     );
-    std::fs::write(out_dir.join("swarm_root_ca_ders.rs"), generated)
-        .expect("can write to OUT_DIR");
+    std::fs::write(out_dir.join("swarm_root_ca_ders.rs"), generated).expect("can write to OUT_DIR");
 }
 
 /// Renders `include_bytes!("...")` for `path`, using forward slashes (accepted on every host,
@@ -156,8 +154,7 @@ fn pem_certificates_to_ders(pem: &str) -> Vec<Vec<u8>> {
 
 /// Decodes standard base64 (with optional `=` padding), rejecting anything else.
 fn base64_decode(input: &str) -> Option<Vec<u8>> {
-    const ALPHABET: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
     let mut out = Vec::with_capacity(input.len() / 4 * 3);
     let mut accumulator: u32 = 0;
