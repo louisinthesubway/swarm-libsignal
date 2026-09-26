@@ -953,8 +953,7 @@ impl<'a> Env<'a> {
             enclave_services,
         } = self;
 
-        let mut result =
-            HashMap::from_iter([chat_domain_config.static_fallback(rng.as_mut())]);
+        let mut result = HashMap::from_iter([chat_domain_config.static_fallback(rng.as_mut())]);
         if *enclave_services == EnclaveServices::Absent {
             // The enclave endpoints are placeholders; don't put their unresolvable hostname in
             // the fallback map.
@@ -1223,14 +1222,12 @@ mod test {
         assert_eq!(env.enclave_services, EnclaveServices::Absent);
         // The placeholder endpoints cannot connect: unresolvable hostname, no fallback IPs and an
         // empty trust store.
-        let placeholders = [&env.cdsi.domain_config]
-            .into_iter()
-            .chain(
-                env.svr2
-                    .current_and_previous()
-                    .chain(env.svr_b.current_and_previous())
-                    .map(|endpoint| &endpoint.domain_config),
-            );
+        let placeholders = [&env.cdsi.domain_config].into_iter().chain(
+            env.svr2
+                .current_and_previous()
+                .chain(env.svr_b.current_and_previous())
+                .map(|endpoint| &endpoint.domain_config),
+        );
         for domain_config in placeholders {
             assert_eq!(
                 domain_config.connect.hostname,
