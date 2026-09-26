@@ -265,7 +265,22 @@ const DOMAIN_CONFIG_SVRB_PROD: DomainConfig = DomainConfig {
 pub const SWARM_CHAT_HOSTNAME: &str = "chat.swarm.green";
 
 /// The SWARM staging chat service host.
+///
+/// Not part of the owner's final host list; it exists so a hosted staging deployment can be
+/// selected without another build. DNS for it has to be created before it can be used.
 pub const SWARM_STAGING_CHAT_HOSTNAME: &str = "staging.chat.swarm.green";
+
+/// The other SWARM service hosts, settled by the owner on 2026-09-26.
+///
+/// libsignal itself never dials these: it has no CDN, calling or registration-host configuration
+/// of any kind (attachments, calls and registration live in the app's own config and in the
+/// server deployment). They are recorded here, next to the chat host, so that every SWARM client
+/// can read one authoritative list, and so a mismatch with the app's config is easy to spot.
+pub const SWARM_CDN_HOSTNAME: &str = "cdn.chat.swarm.green";
+/// Calling (SFU). Reserved; libsignal does not use it. See [`SWARM_CDN_HOSTNAME`].
+pub const SWARM_SFU_HOSTNAME: &str = "sfu.chat.swarm.green";
+/// Registration service. Reserved; libsignal does not use it. See [`SWARM_CDN_HOSTNAME`].
+pub const SWARM_REGISTRATION_HOSTNAME: &str = "reg.chat.swarm.green";
 
 /// Hostname used for services a SWARM environment does not deploy.
 ///
@@ -1250,6 +1265,32 @@ mod test {
         assert_eq!(
             fallback.keys().copied().collect::<Vec<_>>(),
             vec![env.chat_domain_config.connect.hostname]
+        );
+    }
+
+    #[test]
+    fn swarm_service_hostnames_are_the_settled_ones() {
+        assert_eq!(SWARM_CHAT_HOSTNAME, "chat.swarm.green");
+        assert_eq!(SWARM_CDN_HOSTNAME, "cdn.chat.swarm.green");
+        assert_eq!(SWARM_SFU_HOSTNAME, "sfu.chat.swarm.green");
+        assert_eq!(SWARM_REGISTRATION_HOSTNAME, "reg.chat.swarm.green");
+        for hostname in [
+            SWARM_CHAT_HOSTNAME,
+            SWARM_STAGING_CHAT_HOSTNAME,
+            SWARM_CDN_HOSTNAME,
+            SWARM_SFU_HOSTNAME,
+            SWARM_REGISTRATION_HOSTNAME,
+        ] {
+            assert!(hostname.ends_with(".swarm.green"), "{hostname}");
+        }
+        // Only the chat host is ever dialed by this library; the rest are placeholders.
+        let dialed = all_hostnames(&SWARM);
+        assert_eq!(dialed[0], SWARM_CHAT_HOSTNAME);
+        assert!(
+            dialed[1..]
+                .iter()
+                .all(|hostname| *hostname == SWARM_SERVICE_NOT_DEPLOYED_HOSTNAME),
+            "{dialed:?}"
         );
     }
 
