@@ -1,3 +1,22 @@
+<!-- SWARM fork notice -->
+
+# SWARM fork of libsignal
+
+This is the SWARM Messenger fork of [signalapp/libsignal](https://github.com/signalapp/libsignal),
+based on upstream **v0.101.2**. It adds one thing: the SWARM network environment
+(`Environment::Swarm` / `Environment::SwarmStaging`, `chat.swarm.green`), because libsignal compiles
+its server hostnames, TLS roots and enclave identities into Rust and offered only Signal's own
+deployments. No cryptographic code is changed - `rust/protocol`, `rust/crypto`, `rust/zkgroup`,
+`rust/poksho` and `rust/attest` are byte-for-byte upstream.
+
+- What changed and why: [`docs/SWARM-CHANGES.md`](docs/SWARM-CHANGES.md)
+- How the desktop app consumes the build: [`docs/HOW-DESKTOP-USES-IT.md`](docs/HOW-DESKTOP-USES-IT.md)
+
+Upstream's README follows unchanged. libsignal is AGPL-3.0-only; this fork keeps every licence and
+copyright notice, and SWARM does not use Signal's name, logo or brand assets in its products.
+
+---
+
 # Overview
 
 libsignal contains platform-agnostic APIs used by the official Signal clients and servers, exposed
