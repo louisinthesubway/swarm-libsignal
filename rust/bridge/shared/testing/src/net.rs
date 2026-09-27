@@ -7,7 +7,7 @@ use std::num::NonZeroU16;
 
 use base64::prelude::{BASE64_STANDARD, Engine as _};
 use libsignal_bridge_types::net::chat::ServerMessageAck;
-use libsignal_bridge_types::net::{BuildVariant, ConnectionManager, TokioAsyncContext};
+use libsignal_bridge_types::net::{BuildVariant, ConnectionManager, Environment, TokioAsyncContext};
 use libsignal_core::E164;
 use libsignal_net::cdsi::{CdsiProtocolError, LookupError, LookupResponse, LookupResponseEntry};
 use libsignal_net::infra::errors::RetryLater;
@@ -187,6 +187,40 @@ fn TESTING_ConnectionManager_isUsingProxy(manager: &ConnectionManager) -> i32 {
         Ok(false) => 0,
         Err(_) => -1,
     }
+}
+
+/// SWARM addition (see docs/SWARM-CHANGES.md): every hostname the given environment can dial -
+/// chat, the enclave services, domain fronts and censorship-circumvention reflectors - one per
+/// line, chat first. The Java and Swift tests use it to check, without any network access, that
+/// the environment numbers they pass reach the environments they expect.
+#[bridge_fn(node = false)]
+fn TESTING_Environment_Hostnames(environment: AsType<Environment, u8>) -> String {
+    let env = environment.into_inner().env();
+    let mut hostnames = vec![
+        env.chat_domain_config.connect.hostname,
+        env.cdsi.domain_config.connect.hostname,
+    ];
+    hostnames.extend(
+        env.svr2
+            .current_and_previous()
+            .chain(env.svr_b.current_and_previous())
+            .map(|endpoint| endpoint.domain_config.connect.hostname),
+    );
+    let root = http::uri::PathAndQuery::from_static("/");
+    for domain_config in [&env.chat_domain_config, &env.cdsi.domain_config] {
+        if let Some(proxy) = &domain_config.connect.proxy {
+            for front in &proxy.configs {
+                let front = front.reflector_provider_config(root.clone());
+                hostnames.push(front.http_host);
+                hostnames.extend(front.sni_list);
+            }
+        }
+    }
+    for reflector in (env.reflector_providers)() {
+        hostnames.push(reflector.http_host);
+        hostnames.extend(reflector.sni_list);
+    }
+    hostnames.join("\n")
 }
 
 #[bridge_fn]

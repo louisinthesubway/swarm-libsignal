@@ -200,6 +200,9 @@ public object NativeTesting {
   public external fun TESTING_EnableDeterministicRngForTesting(): Unit
 
   @JvmStatic
+  public external fun TESTING_Environment_Hostnames(environment: Int): String
+
+  @JvmStatic
   public external fun TESTING_ErrorOnBorrowAsync(_input: Object): Unit
 
   @JvmStatic
