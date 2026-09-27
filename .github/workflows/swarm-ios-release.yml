@@ -245,25 +245,33 @@ jobs:
           shasum -a 256 fetched.tar.gz
           test "$(shasum -a 256 fetched.tar.gz | cut -d ' ' -f 1)" = "$(cut -d ' ' -f 1 "out/$ARCHIVE.sha256")"
 
-      - name: A fresh CocoaPods workspace consumes the pod and builds
+      - name: A fresh CocoaPods project consumes the pod and builds it for simulator and device
         run: |
           set -euo pipefail
           checksum=$(cut -d ' ' -f 1 "out/$ARCHIVE.sha256")
           mkdir consumer
           cd consumer
+          # A minimal iOS project with one concrete target, made with the xcodeproj gem that
+          # CocoaPods itself uses.
+          ruby -e "require 'xcodeproj'; project = Xcodeproj::Project.new('Consumer.xcodeproj'); project.new_target(:framework, 'Consumer', :ios, '15.0'); project.save"
           cat > Podfile <<EOF
-          platform :ios, '15'
-
+          platform :ios, '15.0'
           use_frameworks!
-
-          workspace 'Consumer'
+          project 'Consumer.xcodeproj'
 
           ENV['LIBSIGNAL_FFI_PREBUILD_CHECKSUM'] = '$checksum'
-          pod 'LibSignalClient', git: 'https://github.com/$GITHUB_REPOSITORY.git', tag: '$TAG'
+
+          target 'Consumer' do
+            pod 'LibSignalClient', git: 'https://github.com/$GITHUB_REPOSITORY.git', tag: '$TAG'
+          end
           EOF
           cat Podfile
           pod install
           grep -A2 'LibSignalClient' Podfile.lock
-          xcodebuild -workspace Consumer.xcworkspace -scheme LibSignalClient -sdk iphonesimulator -configuration Release build CODE_SIGNING_ALLOWED=NO | tail -n 20
-          xcodebuild -workspace Consumer.xcworkspace -scheme LibSignalClient -sdk iphoneos -configuration Release build CODE_SIGNING_ALLOWED=NO | tail -n 20
+          # The pod's own target: its script phases download the archive from the release
+          # (checked against the checksum) and link libsignal_ffi.a.
+          for sdk in iphonesimulator iphoneos; do
+            xcodebuild -project Pods/Pods.xcodeproj -target LibSignalClient -sdk "$sdk" \
+              -configuration Release build CODE_SIGNING_ALLOWED=NO | tail -n 25
+          done
           ls -l ~/Library/Caches/org.signal.libsignal/
