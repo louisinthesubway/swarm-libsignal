@@ -34,9 +34,9 @@ would leak SWARM traffic to a third party.
 
 ### The SWARM environment (all three branches)
 
-The six `swarm-main` commits (`495b37040` .. `adb95335b`), cherry-picked with `-x` onto the mobile
-branches. `git range-diff` between the three series shows no difference except the package version
-strings.
+The seven `swarm-main` commits (`495b37040` .. `dd6456489`), cherry-picked with `-x` onto the
+mobile branches. `git range-diff` between the three series shows no difference except the package
+version strings (and the documents, which the mobile branches rewrite).
 
 | File | Change |
 | --- | --- |
@@ -44,7 +44,7 @@ strings.
 | `rust/net/res/swarm/README.md` | **new.** What the roots are and how to add a private SWARM CA. |
 | `rust/net/build.rs` | Generates `$OUT_DIR/swarm_root_ca_ders.rs`: the two roots above plus every certificate in the optional build-time PEM file named by `$SWARM_TLS_ROOT_CA_PEM` (default `rust/net/res/swarm/swarm-root-ca.pem`, git-ignored). Contains a 30-line base64/PEM reader so no build dependency was added. The protobuf part is untouched. |
 | `rust/net/src/certs.rs` | Adds `SWARM_ROOT_CERTIFICATES` (the generated list) and `NO_ROOT_CERTIFICATES` (an empty trust store). Adds tests asserting the ISRG fingerprints, that no Signal root is in the SWARM list, and that every DER parses. |
-| `rust/net/src/env.rs` | Adds `SWARM` and `SWARM_STAGING` environments, `EnclaveServices`, the `Env::enclave_services` field, the settled SWARM host constants, and tests. See below. |
+| `rust/net/src/env.rs` | Adds `SWARM` and `SWARM_STAGING` environments, `EnclaveServices`, the `Env::enclave_services` field, the settled SWARM host constants, and tests. `SWARM` dials HTTP/2 (`dd6456489`). See below. |
 | `rust/bridge/shared/types/src/net.rs` | `Environment::Swarm = 2`, `Environment::SwarmStaging = 3` and their mapping to the two new `Env`s. `set_censorship_circumvention_enabled` no longer panics when an environment has no reflector providers - it logs and does nothing. Tests for both. |
 | `rust/bridge/shared/testing/src/net_env.rs` | Sets the new `enclave_services` field on the localhost test environment (the mock server does stand in for CDSI/SVR). |
 | `node/ts/net.ts`, `node/ts/test/NetTest.ts` | `Environment.Swarm = 2`, `Environment.SwarmStaging = 3`, `SWARM_HOSTS`, and their tests. |
@@ -83,10 +83,19 @@ files are enforced (spotless, swiftlint) and a new file would have to claim Sign
 ```
 Environment::Swarm         Environment::SwarmStaging
 chat.swarm.green           staging.chat.swarm.green
-port 443, HTTP/1.1         port 443, HTTP/1.1
+port 443, HTTP/2 (h2)      port 443, HTTP/1.1
 TLS 1.3 minimum            TLS 1.2 minimum
 x-signal-timestamp         no confirmation header
 ```
+
+`Environment::Swarm` uses HTTP/2, exactly like upstream's production chat config: the chat
+websocket opens as an RFC 8441 extended CONNECT and gRPC rides the same HTTP/2 connection.
+libsignal makes some calls **only** over that gRPC connection (username reserve/confirm/delete,
+username links, device name, list/remove devices, registration lock, discoverability, push token,
+backups) and panics with "requires an H2 connection" when there is none; over HTTP/1.1 a user
+could not set a username, which is the only way to find another account on a network without
+contact discovery. There is no HTTP/1.1 fallback on this route. `Environment::SwarmStaging` stays
+on HTTP/1.1 until a staging deployment exists on `staging.chat.swarm.green`.
 
 Both share these properties:
 
@@ -105,11 +114,6 @@ Both share these properties:
 - **Key transparency is not configured**: the `KeyTransConfig` for SWARM is all zeroes, so no
   key-transparency proof can verify. Do not enable that feature against a SWARM server until SWARM
   deploys a KT log and real keys land here.
-- **Chat over WebSocket only**: the chat host is configured for HTTP/1.1, so the connection has no
-  HTTP/2 channel. Typed APIs that have both a WebSocket and a gRPC implementation fall back to the
-  WebSocket one (upstream's `grpc_service_to_use_instead` finds no HTTP/2 connection); APIs that
-  exist only over gRPC cannot work against the SWARM chat host until it offers gRPC. This follows
-  from the code; it has not been exercised against a live server.
 
 ### How "absent" enclave services are modelled
 
@@ -149,7 +153,13 @@ port and a self-signed root at run time) exists in the Node binding only.
 - It must send the `x-signal-timestamp` response header (a Signal-Server fork does; a reverse proxy
   must pass it through). Without it, libsignal treats responses as unconfirmed and reports
   `PossibleCaptiveNetwork`. `staging.chat.swarm.green` does not require the header.
-- HTTP/1.1. gRPC over HTTP/2 (upstream's `grpc.chat.signal.org` path) is not configured for SWARM.
+- **HTTP/2 with ALPN `h2`** on `chat.swarm.green`, advertising `SETTINGS_ENABLE_CONNECT_PROTOCOL`
+  (RFC 8441) and answering the websocket paths as extended CONNECTs, and routing
+  `Content-Type: application/grpc` requests to the chat server's gRPC services (Signal-Server's
+  "omnibus" listener). The SWARM staging edge does this with Caddy: see `docs/STAGING.md`
+  section 5b in `Swarm-Official/swarm-messenger-server`. A server that offers only HTTP/1.1 is
+  unusable with `Environment::Swarm`.
+- `staging.chat.swarm.green` (`Environment::SwarmStaging`): HTTP/1.1.
 
 ## What is *not* in libsignal
 
