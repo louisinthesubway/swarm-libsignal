@@ -1,7 +1,8 @@
 # How SWARM Messenger Desktop uses this library
 
 For Opus M-A (desktop). This is the consumption guide for
-`@signalapp/libsignal-client` **0.101.2-swarm.1**, built from
+`@signalapp/libsignal-client` **0.101.2-swarm.2** (HTTP/2 chat connection, so usernames work;
+`0.101.2-swarm.1` was HTTP/1.1), built from
 [Swarm-Official/swarm-libsignal](https://github.com/Swarm-Official/swarm-libsignal), branch
 `swarm-main`.
 
@@ -20,14 +21,14 @@ GitHub CLI (already authenticated as `brs-holding`):
 ```bash
 cd D:/swarm-messenger/Signal-Desktop
 mkdir -p vendor
-gh release download swarm-libsignal-0.101.2-swarm.1 \
+gh release download swarm-libsignal-0.101.2-swarm.2 \
   -R Swarm-Official/swarm-libsignal \
   --pattern 'signalapp-libsignal-client-*.tgz' \
   --dir vendor --clobber
-gh release download swarm-libsignal-0.101.2-swarm.1 \
+gh release download swarm-libsignal-0.101.2-swarm.2 \
   -R Swarm-Official/swarm-libsignal \
   --pattern 'SHA256SUMS.txt' --dir vendor --clobber
-sha256sum vendor/signalapp-libsignal-client-0.101.2-swarm.1.tgz
+sha256sum vendor/signalapp-libsignal-client-0.101.2-swarm.2.tgz
 ```
 
 Expected hashes: see `SHA256SUMS.txt` in the release, and the table at the bottom of this file.
@@ -161,7 +162,12 @@ Only the chat websocket (and provisioning socket) comes from `Environment.Swarm`
 - The response header `x-signal-timestamp` must reach the client on `chat.swarm.green`
   (Signal-Server sends it; a reverse proxy must not strip it). Without it libsignal reports
   `PossibleCaptiveNetwork`. Staging does not require it.
-- Websocket paths `/v1/websocket/` and `/v1/websocket/provisioning/`, HTTP/1.1.
+- `Environment.Swarm` (since `0.101.2-swarm.2`): HTTP/2 only (ALPN `h2`). The websocket paths
+  `/v1/websocket/` and `/v1/websocket/provisioning/` are opened as RFC 8441 extended CONNECTs, so
+  the server must advertise `SETTINGS_ENABLE_CONNECT_PROTOCOL`, and `Content-Type:
+  application/grpc` requests on the same connection must reach the chat server's gRPC services
+  (usernames, devices and backups exist only there). `Environment.SwarmStaging`: HTTP/1.1
+  websocket upgrades on the same two paths.
 - If the staging server uses a private CA, either use the loopback
   `localTestServer` path (root certificate passed at run time) or ask for a rebuild with
   `SWARM_TLS_ROOT_CA_PEM` - see [`SWARM-CHANGES.md`](SWARM-CHANGES.md).
@@ -170,7 +176,7 @@ Only the chat websocket (and provisioning socket) comes from `Environment.Swarm`
 
 ```
 Workflow "SWARM - node prebuilds and release" (workflow_dispatch)
-  inputs: tag (default swarm-libsignal-0.101.2-swarm.1), include_darwin_x64
+  inputs: tag (default swarm-libsignal-0.101.2-swarm.2), include_darwin_x64
   jobs:   prepare -> build (linux-x64, win32-x64, darwin-arm64) -> package
 ```
 

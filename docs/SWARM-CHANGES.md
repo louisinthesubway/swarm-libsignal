@@ -6,7 +6,7 @@ This repository is a fork of [signalapp/libsignal](https://github.com/signalapp/
 | --- | --- |
 | Upstream base of `swarm-main` | **v0.101.2** = `eb7864c4d` (the version Signal-Desktop `abe80d3` pins) |
 | Also pushed, for reference | branch `upstream-main` = `e8cc2dddd` (upstream main as cloned 2026-09-22, node version 0.103.1), tags `upstream-v0.101.2`, `upstream-e8cc2dd` |
-| Node package | `@signalapp/libsignal-client` **0.101.2-swarm.1** |
+| Node package | `@signalapp/libsignal-client` **0.101.2-swarm.2** (0.101.2-swarm.1 was the first release) |
 
 Why v0.101.2 and not upstream main: Signal-Desktop pins `@signalapp/libsignal-client` at exactly
 `0.101.2`, and upstream main has moved to 0.103.1. Building the SWARM environment on top of the
@@ -35,12 +35,12 @@ which their terms forbid and which would leak SWARM traffic to a third party.
 | `rust/net/res/swarm/README.md` | **new.** What the roots are and how to add a private SWARM CA. |
 | `rust/net/build.rs` | Generates `$OUT_DIR/swarm_root_ca_ders.rs`: the two roots above plus every certificate in the optional build-time PEM file named by `$SWARM_TLS_ROOT_CA_PEM` (default `rust/net/res/swarm/swarm-root-ca.pem`, git-ignored). Contains a 30-line base64/PEM reader so no build dependency was added. The protobuf part is untouched. |
 | `rust/net/src/certs.rs` | Adds `SWARM_ROOT_CERTIFICATES` (the generated list) and `NO_ROOT_CERTIFICATES` (an empty trust store). Adds tests asserting the ISRG fingerprints, that no Signal root is in the SWARM list, and that every DER parses. |
-| `rust/net/src/env.rs` | Adds `SWARM` and `SWARM_STAGING` environments, `EnclaveServices`, the `Env::enclave_services` field, and tests. See below. |
+| `rust/net/src/env.rs` | Adds `SWARM` and `SWARM_STAGING` environments, `EnclaveServices`, the `Env::enclave_services` field, and tests. `SWARM` dials HTTP/2 since `0.101.2-swarm.2`. See below. |
 | `rust/bridge/shared/types/src/net.rs` | `Environment::Swarm = 2`, `Environment::SwarmStaging = 3` and their mapping to the two new `Env`s. `set_censorship_circumvention_enabled` no longer panics when an environment has no reflector providers - it logs and does nothing. Tests for both. |
 | `rust/bridge/shared/testing/src/net_env.rs` | Sets the new `enclave_services` field on the localhost test environment (the mock server does stand in for CDSI/SVR). |
 | `node/ts/net.ts` | `Environment.Swarm = 2`, `Environment.SwarmStaging = 3`, documented. |
 | `node/ts/test/NetTest.ts` | `new Net({ env: Environment.Swarm })` and `Environment.SwarmStaging` construct, and `setCensorshipCircumventionEnabled(true)` does not throw. |
-| `node/package.json`, `node/package-lock.json` | Version `0.101.2-swarm.1`, repository points here, and a `"swarm"` block naming the upstream base and the chat host. |
+| `node/package.json`, `node/package-lock.json` | Version `0.101.2-swarm.2`, repository points here, and a `"swarm"` block naming the upstream base and the chat host. |
 | `.github/workflows/swarm-tests.yml` | **new.** `cargo test -p libsignal-net --lib`, `cargo test -p libsignal-bridge-types --lib`, `npm run tsc/lint/format -c`. |
 | `.github/workflows/swarm-node-release.yml` | **new.** Prebuilds for win32-x64, linux-x64, darwin-arm64 (darwin-x64 optional) attached to a GitHub Release, then the npm tarball. |
 | `.gitignore` | Ignores `rust/net/res/swarm/swarm-root-ca.pem`. |
@@ -54,10 +54,19 @@ are not run here; they target `main` and upstream's self-hosted runner sizes).
 ```
 Environment::Swarm         Environment::SwarmStaging
 chat.swarm.green           staging.chat.swarm.green
-port 443, HTTP/1.1         port 443, HTTP/1.1
+port 443, HTTP/2 (h2)      port 443, HTTP/1.1
 TLS 1.3 minimum            TLS 1.2 minimum
 x-signal-timestamp         no confirmation header
 ```
+
+`Environment::Swarm` uses HTTP/2 since `0.101.2-swarm.2`, exactly like upstream's production chat
+config: the chat websocket opens as an RFC 8441 extended CONNECT and gRPC rides the same HTTP/2
+connection. libsignal 0.101.2 makes some calls **only** over that gRPC connection (username
+reserve/confirm/delete, username links, device name, list/remove devices, registration lock,
+discoverability, push token, backups) and panics with "requires an H2 connection" when there is
+none; with HTTP/1.1 (`0.101.2-swarm.1`) a user could not set a username. There is no HTTP/1.1
+fallback on this route. `Environment::SwarmStaging` stays on HTTP/1.1 until a staging deployment
+exists on `staging.chat.swarm.green`.
 
 Both share these properties:
 
@@ -133,8 +142,14 @@ regenerates `node/ts/Native.ts`.
 - It must send the `x-signal-timestamp` response header (a Signal-Server fork does; a reverse proxy
   must pass it through). Without it, libsignal treats responses as unconfirmed and reports
   `PossibleCaptiveNetwork`. `staging.chat.swarm.green` does not require the header.
-- HTTP/1.1. gRPC over HTTP/2 (upstream's newer `grpc.chat.signal.org` path) is not configured for
-  SWARM.
+- **HTTP/2 with ALPN `h2`** on `chat.swarm.green` (since `0.101.2-swarm.2`), advertising
+  `SETTINGS_ENABLE_CONNECT_PROTOCOL` (RFC 8441) and answering the websocket paths as extended
+  CONNECTs, and routing `Content-Type: application/grpc` requests to the chat server's gRPC
+  services (Signal-Server's "omnibus" listener). The SWARM staging edge does this with Caddy
+  (`GODEBUG=http2xconnect=1` plus a `protocol grpc` route): see `docs/STAGING.md` section 5b in
+  `Swarm-Official/swarm-messenger-server`. A server that offers only HTTP/1.1 is unusable with
+  `Environment::Swarm` from `0.101.2-swarm.2` on.
+- `staging.chat.swarm.green` (`Environment::SwarmStaging`): HTTP/1.1.
 
 ## What is *not* in libsignal
 
