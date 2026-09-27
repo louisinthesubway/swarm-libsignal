@@ -2,15 +2,21 @@
 
 # SWARM fork of libsignal
 
-This is the SWARM Messenger fork of [signalapp/libsignal](https://github.com/signalapp/libsignal),
-based on upstream **v0.101.2**. It adds one thing: the SWARM network environment
-(`Environment::Swarm` / `Environment::SwarmStaging`, `chat.swarm.green`), because libsignal compiles
+This is the SWARM Messenger fork of [signalapp/libsignal](https://github.com/signalapp/libsignal).
+It adds one thing: the SWARM network environment (`chat.swarm.green`), because libsignal compiles
 its server hostnames, TLS roots and enclave identities into Rust and offered only Signal's own
 deployments. No cryptographic code is changed - `rust/protocol`, `rust/crypto`, `rust/zkgroup`,
 `rust/poksho` and `rust/attest` are byte-for-byte upstream.
 
+| Branch | Upstream base | Built for | Selects SWARM with |
+| --- | --- | --- | --- |
+| `swarm-main` | v0.101.2 | the desktop app (npm package) | `Net.Environment.Swarm` |
+| `swarm-v0.102.2` | v0.102.2 | the Android app (AAR and JAR on the `maven` branch) | `Network.Environment.SWARM` |
+| `swarm-v0.102.3` | v0.102.3 | the iOS app (CocoaPod with a prebuilt archive) | `Net.Environment.swarm` |
+
 - What changed and why: [`docs/SWARM-CHANGES.md`](docs/SWARM-CHANGES.md)
-- How the desktop app consumes the build: [`docs/HOW-DESKTOP-USES-IT.md`](docs/HOW-DESKTOP-USES-IT.md)
+- How the Android and iOS apps consume their builds: [`docs/SWARM-MOBILE.md`](docs/SWARM-MOBILE.md)
+- How the desktop app consumes its build: `docs/HOW-DESKTOP-USES-IT.md` on `swarm-main`
 
 Upstream's README follows unchanged. libsignal is AGPL-3.0-only; this fork keeps every licence and
 copyright notice, and SWARM does not use Signal's name, logo or brand assets in its products.
