@@ -39,3 +39,11 @@ __pycache__
 
 # SWARM: private root CA, never committed.
 rust/net/res/swarm/swarm-root-ca.pem
+
+# SWARM: local outputs of the "SWARM - node prebuilds and release" workflow. The native
+# libraries and the npm tarball are ~75 MB together; they live on the GitHub Release, and
+# their hashes are in docs/HOW-DESKTOP-USES-IT.md. Never commit them.
+/node/prebuilds
+/node/*.tgz
+/node/SHA256SUMS.txt
+/.tmp-release
