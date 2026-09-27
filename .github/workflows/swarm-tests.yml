@@ -67,5 +67,5 @@ jobs:
         working-directory: node
 
       - name: Prettier
-        run: npm run format -c
+        run: npm run format-check
         working-directory: node

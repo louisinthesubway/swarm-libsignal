@@ -211,6 +211,12 @@ Worth knowing before you audit the tarball, because it is not a single-commit bu
   settled SWARM service hosts next to the chat host"), the current tip of `swarm-main`. That is why
   `SWARM_HOSTS` and the four-host `swarm` block are in the package.
 
+One more drift, from after the pack: `node/package.json` has since been reformatted by Prettier, which
+moves the `swarm` block below `devDependencies` and puts `environments` on three lines. The packed
+copy has the old key order. Same keys, same values, so `require('@signalapp/libsignal-client/package.json').swarm`
+reads identically and the checks in section 2 behave the same - but a byte diff against the tip will
+show it.
+
 The only Rust change between those two commits is `rust/net/src/env.rs`, +41 lines and zero
 deletions: the `pub const` hostname strings and the tests that assert them. None of those constants
 is referenced anywhere outside `env.rs`, and none is exported through the bridge, so none of them can
