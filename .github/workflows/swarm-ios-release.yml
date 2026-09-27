@@ -1,5 +1,5 @@
 name: "SWARM - iOS release"
-run-name: "SWARM - iOS release (${{ github.ref_name }}, ${{ inputs.tag }}, publish=${{ inputs.publish }})"
+run-name: "${{ github.event_name == 'workflow_dispatch' && format('SWARM - iOS release ({0}, {1}, publish={2})', github.ref_name, inputs.tag, inputs.publish) || 'SWARM - iOS release (registration run, nothing is built)' }}"
 
 # Builds the SWARM libsignal for iOS from this branch and publishes it (docs/SWARM-MOBILE.md):
 #
@@ -28,6 +28,12 @@ on:
         description: "Publish the release (off: build and lint only)"
         type: boolean
         default: true
+  # Only so that GitHub registers this workflow, which lives on this branch rather than on the
+  # default branch: `gh workflow run` cannot dispatch a workflow GitHub has never seen. A push
+  # run builds nothing; every job is skipped.
+  push:
+    branches: [swarm-v0.102.3]
+    paths: ['.github/workflows/swarm-ios-release.yml']
 
 permissions:
   contents: read
@@ -38,6 +44,7 @@ env:
 
 jobs:
   build:
+    if: github.event_name == 'workflow_dispatch'
     name: Build libsignal_ffi.a (device + simulators) and lint the pod
     runs-on: macos-15
     timeout-minutes: 150

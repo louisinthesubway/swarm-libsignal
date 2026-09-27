@@ -3,15 +3,15 @@ name: "SWARM - tests"
 # Validation of the SWARM changes (docs/SWARM-CHANGES.md) on the mobile branches:
 #  - Rust: libsignal-net (lib, integration tests and doctests; the non-hermetic tests skip
 #    themselves) and libsignal-bridge-types, plus rustfmt over the workspace;
-#  - Java: the JNI bindings are unchanged, the client test suite passes (it includes the SWARM
-#    environment tests in NetworkTest), and spotless is clean;
-#  - Swift: the FFI header is unchanged and the Swift package tests pass (they include the SWARM
-#    environment tests in NetTests.swift); swift-format and swiftlint over the two Swift files
-#    SWARM touches, advisory only;
+#  - Java: the JNI bindings match upstream's generator, the client test suite passes (it includes
+#    the SWARM environment tests in NetworkTest), and spotless is clean;
+#  - Swift: the FFI header matches upstream's generator and the Swift package tests pass (they
+#    include the SWARM environment tests in NetTests.swift); swift-format and swiftlint as
+#    upstream runs them;
 #  - Node TypeScript (the SWARM enum values are there too; the Node package is not released
 #    from these branches).
-# Nothing here contacts any server: the SWARM environment tests aim their connection attempts
-# at a refusing proxy on 127.0.0.1.
+# Nothing here contacts any server: the SWARM environment tests read the compiled-in hostnames
+# through a testing-only bridge function.
 
 on:
   push:
@@ -117,28 +117,28 @@ jobs:
         working-directory: swift
 
   swift-style:
-    name: Swift format and lint of the SWARM-touched files (advisory)
+    name: Swift format and lint (upstream's checks, Xcode 26.3)
     runs-on: macos-15
-    timeout-minutes: 20
-    continue-on-error: true
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
-      - name: Use the newest Xcode 26 (upstream lints with Xcode 26.3)
+      - name: Use Xcode 26.3, as upstream's CI does
         run: |
           set -euo pipefail
-          xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -n 1)
+          xcode=$(ls -d /Applications/Xcode_26.3*.app | sort -V | tail -n 1)
           echo "Using $xcode"
           echo "DEVELOPER_DIR=$xcode/Contents/Developer" >> "$GITHUB_ENV"
 
       - run: brew install swiftlint
 
-      - name: swift-format
-        run: swift format lint --strict --configuration .swift-format swift/Sources/LibSignalClient/Net.swift swift/Tests/LibSignalClientTests/NetTests.swift
-
-      - name: swiftlint
+      - name: Check formatting
+        run: swift format --in-place --parallel --recursive . && git diff --exit-code .
         working-directory: swift
-        run: swiftlint lint --strict Sources/LibSignalClient/Net.swift Tests/LibSignalClientTests/NetTests.swift
+
+      - name: Run lint
+        run: swiftlint lint --strict --reporter github-actions-logging
+        working-directory: swift
 
   node-typescript:
     name: Node TypeScript
