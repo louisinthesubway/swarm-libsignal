@@ -1824,6 +1824,10 @@ SignalFfiError* signal_testing_delete_username_link_tests(
   SignalOwnedBufferOfGrpcTestCaseBridgedFfi* out
 );
 SignalFfiError* signal_testing_enable_deterministic_rng_for_testing(void);
+SignalFfiError* signal_testing_environment_hostnames(
+  SignalCStringPtr* out,
+  uint8_t environment
+);
 SignalFfiError* signal_testing_error_on_borrow_async(
   const void* _input
 );

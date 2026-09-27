@@ -56,18 +56,20 @@ version strings (and the documents, which the mobile branches rewrite).
 Every bridge entry point that takes an environment (`ConnectionManager_new`, the key transparency
 client and SVR-B) receives it as `AsType<Environment, u8>` and converts it with
 `derive_more::TryFrom`, so the JNI, FFI and Node functions accept 2 and 3 as soon as the Rust enum
-has them: no bridge function signature changed and no generated binding (`Native.kt`,
-`signal_ffi.h`, `Native.ts`) had to be regenerated. The SWARM test workflow checks the JNI and FFI
-bindings with upstream's own `--verify` generators.
+has them: no bridge function signature changed and no production binding (`Native.kt`,
+`signal_ffi.h`, `Native.ts`) changed. The SWARM test workflow checks the JNI and FFI bindings with
+upstream's own `--verify` generators.
 
 ### Added on the mobile branches
 
 | File | Change |
 | --- | --- |
 | `java/client/src/main/java/org/signal/libsignal/net/Network.java` | `Network.Environment.SWARM(2)` and `SWARM_STAGING(3)`. |
-| `java/client/src/test/java/org/signal/libsignal/net/NetworkTest.java` | The enum values match the Rust bridge; censorship circumvention is a no-op that configures no proxy; a chat connection attempt in each SWARM environment, sent through a refusing HTTP CONNECT proxy on 127.0.0.1, asks only for `chat.swarm.green:443` / `staging.chat.swarm.green:443` and never for a host containing `signal`. |
+| `java/client/src/test/java/org/signal/libsignal/net/NetworkTest.java` | The enum values match the Rust bridge; every host the SWARM environments can dial (chat first: `chat.swarm.green`, `staging.chat.swarm.green`) ends in `.swarm.green` or `.swarm.invalid` and none contains `signal`, while Signal's production environment does name Signal hosts (so the check is not vacuous); censorship circumvention is a no-op that configures no proxy. No network access. |
 | `swift/Sources/LibSignalClient/Net.swift` | `Net.Environment.swarm = 2` and `.swarmStaging = 3`. |
-| `swift/Tests/LibSignalClientTests/NetTests.swift` | The same three tests as the Java ones (`SwarmNetTests`). |
+| `swift/Tests/LibSignalClientTests/NetTests.swift` | The same tests as the Java ones (`SwarmNetTests`). |
+| `rust/bridge/shared/testing/src/net.rs` | **Testing only:** `TESTING_Environment_Hostnames(environment)` returns every hostname an environment can dial (chat, CDSI, SVR2, SVR-B, domain fronts, reflectors), for the two tests above. It lives in the testing bridge, which upstream leaves out of iOS device builds; not exported to Node. |
+| `java/shared/java/org/signal/libsignal/internal/NativeTesting.kt`, `swift/Sources/SignalFfi/signal_ffi_testing.h` | The generated declarations of that one testing function; checked by upstream's `--verify` generators in CI. |
 | `java/build.gradle`, `java/client/build.gradle`, `java/android/build.gradle` | (`swarm-v0.102.2`) version `0.102.2-swarm.1`; the POMs name this repository as the project URL and SCM, and say it is a SWARM build. |
 | `LibSignalClient.podspec` | (`swarm-v0.102.3`) version `0.102.3-swarm.1`; homepage and source point here; the prebuilt `libsignal_ffi.a` archive is downloaded from this repository's release instead of Signal's artifact host. |
 | `.github/workflows/swarm-android-release.yml` | (`swarm-v0.102.2`) **new.** Builds the AAR and JAR, tests them, publishes the release and the `maven` branch, and checks that a fresh Gradle build consumes them. |
