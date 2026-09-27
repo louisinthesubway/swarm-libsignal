@@ -1,5 +1,5 @@
 name: "SWARM - Android release"
-run-name: "SWARM - Android release (${{ github.ref_name }}, ${{ inputs.tag }}, publish=${{ inputs.publish }})"
+run-name: "${{ github.event_name == 'workflow_dispatch' && format('SWARM - Android release ({0}, {1}, publish={2})', github.ref_name, inputs.tag, inputs.publish) || 'SWARM - Android release (registration run, nothing is built)' }}"
 
 # Builds the SWARM libsignal for Android from this branch and publishes it (docs/SWARM-MOBILE.md):
 #
@@ -29,6 +29,12 @@ on:
         description: "Publish the release and the maven branch (off: build and test only)"
         type: boolean
         default: true
+  # Only so that GitHub registers this workflow, which lives on this branch rather than on the
+  # default branch: `gh workflow run` cannot dispatch a workflow GitHub has never seen. A push
+  # run builds nothing; every job is skipped.
+  push:
+    branches: [swarm-v0.102.2]
+    paths: ['.github/workflows/swarm-android-release.yml']
 
 permissions:
   contents: read
@@ -40,6 +46,7 @@ env:
 
 jobs:
   version:
+    if: github.event_name == 'workflow_dispatch'
     name: Check the tag against java/build.gradle
     runs-on: ubuntu-latest
     timeout-minutes: 5
