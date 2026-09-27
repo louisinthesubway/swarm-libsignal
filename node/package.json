@@ -2,16 +2,6 @@
   "name": "@signalapp/libsignal-client",
   "version": "0.101.2-swarm.1",
   "repository": "github:Swarm-Official/swarm-libsignal",
-  "swarm": {
-    "upstream": "v0.101.2",
-    "chatHost": "chat.swarm.green",
-    "stagingChatHost": "staging.chat.swarm.green",
-    "cdnHost": "cdn.chat.swarm.green",
-    "sfuHost": "sfu.chat.swarm.green",
-    "registrationHost": "reg.chat.swarm.green",
-    "environments": ["Swarm", "SwarmStaging"],
-    "docs": "docs/SWARM-CHANGES.md"
-  },
   "license": "AGPL-3.0-only",
   "type": "module",
   "main": "dist/index.js",
@@ -83,5 +73,18 @@
     "source-map-support": "^0.5.19",
     "typescript": "6.0.3",
     "typescript-eslint": "^8.59.3"
+  },
+  "swarm": {
+    "upstream": "v0.101.2",
+    "chatHost": "chat.swarm.green",
+    "stagingChatHost": "staging.chat.swarm.green",
+    "cdnHost": "cdn.chat.swarm.green",
+    "sfuHost": "sfu.chat.swarm.green",
+    "registrationHost": "reg.chat.swarm.green",
+    "environments": [
+      "Swarm",
+      "SwarmStaging"
+    ],
+    "docs": "docs/SWARM-CHANGES.md"
   }
 }
