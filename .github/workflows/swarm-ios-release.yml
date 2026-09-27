@@ -1,0 +1,262 @@
+name: "SWARM - iOS release"
+run-name: "SWARM - iOS release (${{ github.ref_name }}, ${{ inputs.tag }}, publish=${{ inputs.publish }})"
+
+# Builds the SWARM libsignal for iOS from this branch and publishes it (docs/SWARM-MOBILE.md):
+#
+#  - libsignal_ffi.a for aarch64-apple-ios (device), aarch64-apple-ios-sim and x86_64-apple-ios
+#    (simulators), packed exactly like upstream's archive as
+#    libsignal-client-ios-build-v<podspec version>.tar.gz;
+#  - `pod lib lint` of LibSignalClient.podspec against the simulator build, as upstream's CI does;
+#  - a GitHub Release <tag> with the archive, its .sha256 and SHA256SUMS.txt; the podspec at that
+#    tag downloads the archive from there and checks it against LIBSIGNAL_FFI_PREBUILD_CHECKSUM;
+#  - a consumer check: a fresh CocoaPods workspace takes the pod from the tag with the checksum,
+#    downloads the prebuilt archive through the podspec's own script phase, and builds for the
+#    simulator and for a device.
+#
+# Upstream's "Release - iOS" (ios_artifacts.yml) uploads to Signal's own bucket with Signal's
+# credentials and is not used here. Everything runs on GitHub-hosted runners and nothing contacts
+# Signal's servers.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag; must be swarm-libsignal-<version in LibSignalClient.podspec>"
+        required: true
+        default: "swarm-libsignal-0.102.3-swarm.1"
+      publish:
+        description: "Publish the release (off: build and lint only)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  build:
+    name: Build libsignal_ffi.a (device + simulators) and lint the pod
+    runs-on: macos-15
+    timeout-minutes: 150
+    outputs:
+      version: ${{ steps.names.outputs.version }}
+      archive: ${{ steps.names.outputs.archive }}
+    env:
+      LIBSIGNAL_TESTING_ONLY_ACTIVE_ARCH: 1
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: names
+        env:
+          TAG: ${{ inputs.tag }}
+          VERSION_REGEX: "^.*[.]version += '(.+)'$"
+        run: |
+          set -euo pipefail
+          version=$(sed -En "s/${VERSION_REGEX}/\1/p" LibSignalClient.podspec)
+          echo "podspec version: $version"
+          if [ "$TAG" != "swarm-libsignal-$version" ]; then
+            echo "::error::tag $TAG does not match podspec version $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "archive=libsignal-client-ios-build-v$version.tar.gz" >> "$GITHUB_OUTPUT"
+
+      - name: Use the newest Xcode 26 (upstream builds the pod with Xcode 26.3)
+        run: |
+          set -euo pipefail
+          xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -n 1)
+          echo "Using $xcode"
+          echo "DEVELOPER_DIR=$xcode/Contents/Developer" >> "$GITHUB_ENV"
+
+      - run: xcodebuild -version && swift --version
+
+      - run: rustup toolchain install "$(cat rust-toolchain)" --profile minimal --target x86_64-apple-ios,aarch64-apple-ios,aarch64-apple-ios-sim --component rust-src
+
+      - run: brew install protobuf
+
+      - name: Build for aarch64-apple-ios (device)
+        run: swift/build_ffi.sh --release
+        env:
+          CARGO_BUILD_TARGET: aarch64-apple-ios
+
+      - name: Build for aarch64-apple-ios-sim
+        run: swift/build_ffi.sh --release
+        env:
+          CARGO_BUILD_TARGET: aarch64-apple-ios-sim
+
+      - name: Build for x86_64-apple-ios (Intel simulator)
+        run: swift/build_ffi.sh --release
+        env:
+          CARGO_BUILD_TARGET: x86_64-apple-ios
+
+      - name: The libraries carry the SWARM environment
+        run: |
+          set -euo pipefail
+          for target in aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios; do
+            lib="target/$target/release/libsignal_ffi.a"
+            ls -l "$lib"
+            lipo -info "$lib" || true
+            echo "$target: $(grep -c -a -F chat.swarm.green "$lib") occurrence(s) of chat.swarm.green"
+            grep -q -a -F chat.swarm.green "$lib"
+          done
+
+      - name: Pack the archive (same layout as upstream's)
+        run: |
+          set -euo pipefail
+          archive='${{ steps.names.outputs.archive }}'
+          mkdir -p out
+          tar -c --auto-compress --no-mac-metadata -f "out/$archive" target/*/release/libsignal_ffi.a
+          tar -t -v -f "out/$archive"
+          (cd out && shasum -a 256 "$archive" | tee "$archive.sha256" && cp "$archive.sha256" SHA256SUMS.txt)
+
+      - name: pod lib lint (simulator build, as upstream's CI)
+        run: pod lib lint --verbose --platforms=ios --skip-tests
+        env:
+          LIBSIGNAL_TESTING_DISABLE_EXPLICIT_MODULES: 1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-release
+          path: out/
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish the release
+    needs: build
+    if: ${{ inputs.publish }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ inputs.tag }}
+      VERSION: ${{ needs.build.outputs.version }}
+      ARCHIVE: ${{ needs.build.outputs.archive }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ios-release
+          path: out
+
+      - name: Refuse to replace an existing release or tag
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" > /dev/null 2>&1 || git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null; then
+            echo "::error::$TAG already exists; bump the version instead"
+            exit 1
+          fi
+
+      - name: Write the release notes
+        run: |
+          set -euo pipefail
+          upstream="upstream-v${VERSION%-swarm.*}"
+          git fetch --no-tags origin "refs/tags/$upstream:refs/tags/$upstream"
+          checksum=$(cut -d ' ' -f 1 "out/$ARCHIVE.sha256")
+          crypto_paths="rust/protocol rust/crypto rust/zkgroup rust/zkcredential rust/poksho rust/attest rust/svrb rust/keytrans rust/core rust/account-keys rust/usernames rust/media rust/message-backup rust/device-transfer"
+          {
+            echo "SWARM build of libsignal **$VERSION** for iOS, from branch \`$GITHUB_REF_NAME\` at \`$GITHUB_SHA\` (upstream base \`$upstream\` = $(git rev-parse --short "$upstream^{commit}"))."
+            echo
+            echo "Adds the SWARM network environment (\`Net.Environment.swarm\` = chat.swarm.green, \`.swarmStaging\` = staging.chat.swarm.green). Consumption: [docs/SWARM-MOBILE.md](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_SHA/docs/SWARM-MOBILE.md). What changed and why: [docs/SWARM-CHANGES.md](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_SHA/docs/SWARM-CHANGES.md)."
+            echo
+            echo "Podfile:"
+            echo
+            echo '```ruby'
+            echo "ENV['LIBSIGNAL_FFI_PREBUILD_CHECKSUM'] = '$checksum'"
+            echo "pod 'LibSignalClient', git: 'https://github.com/$GITHUB_REPOSITORY.git', tag: '$TAG'"
+            echo '```'
+            echo
+            echo "\`$ARCHIVE\` holds \`libsignal_ffi.a\` for aarch64-apple-ios (device), aarch64-apple-ios-sim and x86_64-apple-ios, in upstream's layout."
+            echo
+            echo "Built by $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID on GitHub-hosted runners. Not signed; verify with SHA256SUMS.txt. A pre-release: not audited, not production-hardened."
+            echo
+            echo "### \`git diff --stat $upstream..$GITHUB_SHA\`"
+            echo
+            echo '```'
+            git diff --stat=120 "$upstream" "$GITHUB_SHA"
+            echo '```'
+            echo
+            if git diff --quiet "$upstream" "$GITHUB_SHA" -- $crypto_paths; then
+              echo "No change under: $crypto_paths."
+            else
+              echo "**Changes under cryptographic paths:**"
+              echo '```'
+              git diff --stat "$upstream" "$GITHUB_SHA" -- $crypto_paths
+              echo '```'
+            fi
+            echo
+            echo "### SHA256SUMS.txt"
+            echo
+            echo '```'
+            cat out/SHA256SUMS.txt
+            echo '```'
+          } > notes.md
+          cat notes.md
+
+      - name: Create the release
+        run: |
+          gh release create "$TAG" "out/$ARCHIVE" "out/$ARCHIVE.sha256" out/SHA256SUMS.txt \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "swarm-libsignal $VERSION (iOS)" \
+            --notes-file notes.md
+
+  consumer-check:
+    name: Consumer check (CocoaPods from the tag, prebuilt archive from the release)
+    needs: [build, publish]
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      TAG: ${{ inputs.tag }}
+      ARCHIVE: ${{ needs.build.outputs.archive }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ios-release
+          path: out
+
+      - name: Use the newest Xcode 26
+        run: |
+          set -euo pipefail
+          xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -n 1)
+          echo "Using $xcode"
+          echo "DEVELOPER_DIR=$xcode/Contents/Developer" >> "$GITHUB_ENV"
+
+      - name: The release URL serves exactly the published archive
+        run: |
+          set -euo pipefail
+          url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$ARCHIVE"
+          curl -fsSL --retry 5 -o fetched.tar.gz "$url"
+          shasum -a 256 fetched.tar.gz
+          test "$(shasum -a 256 fetched.tar.gz | cut -d ' ' -f 1)" = "$(cut -d ' ' -f 1 "out/$ARCHIVE.sha256")"
+
+      - name: A fresh CocoaPods workspace consumes the pod and builds
+        run: |
+          set -euo pipefail
+          checksum=$(cut -d ' ' -f 1 "out/$ARCHIVE.sha256")
+          mkdir consumer
+          cd consumer
+          cat > Podfile <<EOF
+          platform :ios, '15'
+
+          use_frameworks!
+
+          workspace 'Consumer'
+
+          ENV['LIBSIGNAL_FFI_PREBUILD_CHECKSUM'] = '$checksum'
+          pod 'LibSignalClient', git: 'https://github.com/$GITHUB_REPOSITORY.git', tag: '$TAG'
+          EOF
+          cat Podfile
+          pod install
+          grep -A2 'LibSignalClient' Podfile.lock
+          xcodebuild -workspace Consumer.xcworkspace -scheme LibSignalClient -sdk iphonesimulator -configuration Release build CODE_SIGNING_ALLOWED=NO | tail -n 20
+          xcodebuild -workspace Consumer.xcworkspace -scheme LibSignalClient -sdk iphoneos -configuration Release build CODE_SIGNING_ALLOWED=NO | tail -n 20
+          ls -l ~/Library/Caches/org.signal.libsignal/

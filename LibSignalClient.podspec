@@ -5,13 +5,19 @@
 
 Pod::Spec.new do |s|
   s.name             = 'LibSignalClient'
-  s.version          = '0.102.3'
-  s.summary          = 'A Swift wrapper library for communicating with the Signal messaging service.'
+  # SWARM: the fork's own version. The release tag (swarm-libsignal-<version>) and the prebuilt
+  # archive name (libsignal-client-ios-build-v<version>.tar.gz) derive from it.
+  s.version          = '0.102.3-swarm.1'
+  s.summary          = 'A Swift wrapper library for communicating with the Signal messaging service. SWARM build.'
 
-  s.homepage         = 'https://github.com/signalapp/libsignal'
+  s.homepage         = 'https://github.com/Swarm-Official/swarm-libsignal'
   s.license          = 'AGPL-3.0-only'
   s.author           = 'Signal Messenger LLC'
-  s.source           = { :git => 'https://github.com/signalapp/libsignal.git', :tag => "v#{s.version}" }
+  s.source           = { :git => 'https://github.com/Swarm-Official/swarm-libsignal.git', :tag => "swarm-libsignal-#{s.version}" }
+
+  # SWARM: the prebuilt libsignal_ffi.a archive comes from this fork's GitHub release, not from
+  # Signal's artifact host. (Kept out of the xcconfig: '//' would start a comment there.)
+  prebuild_url = "https://github.com/Swarm-Official/swarm-libsignal/releases/download/swarm-libsignal-#{s.version}/libsignal-client-ios-build-v#{s.version}.tar.gz"
 
   s.swift_version    = '5'
   s.platform         = :ios, '15.0'
@@ -83,13 +89,13 @@ Pod::Spec.new do |s|
       # but I wouldn't want to risk a mismatched archive giving us cryptic errors at link or run
       # time later. This Is Fine.
       always_out_of_date: '1',
-      script: %q(
+      script: %Q(
         set -euo pipefail
         if [ -e "${PODS_TARGET_SRCROOT}/swift/build_ffi.sh" ]; then
           # Local development
           exit 0
         fi
-        "${PODS_TARGET_SRCROOT}"/bin/fetch_archive.py -u "https://build-artifacts.signal.org/libraries/${LIBSIGNAL_FFI_PREBUILD_ARCHIVE}" -c "${LIBSIGNAL_FFI_PREBUILD_CHECKSUM}" -o "${USER_LIBRARY_DIR}/Caches/org.signal.libsignal"
+        "${PODS_TARGET_SRCROOT}"/bin/fetch_archive.py -u "#{prebuild_url}" -c "${LIBSIGNAL_FFI_PREBUILD_CHECKSUM}" -o "${USER_LIBRARY_DIR}/Caches/org.signal.libsignal"
       ),
     },
     { name: 'Extract libsignal-ffi prebuild',
