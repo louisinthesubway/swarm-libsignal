@@ -181,14 +181,48 @@ binary or the tarball by hand.
 
 ## 8. Hashes
 
-Filled in from the release `SHA256SUMS.txt`:
+Release page:
+<https://github.com/Swarm-Official/swarm-libsignal/releases/tag/swarm-libsignal-0.101.2-swarm.1>
+
+These are the values in the release's `SHA256SUMS.txt`. Check the tarball against the first row
+before you install it.
 
 | File | SHA-256 |
 | --- | --- |
-| `signalapp-libsignal-client-0.101.2-swarm.1.tgz` | see release |
-| `prebuilds/win32-x64/@signalapp+libsignal-client.node` | see release |
-| `prebuilds/linux-x64/@signalapp+libsignal-client.node` | see release |
-| `prebuilds/darwin-arm64/@signalapp+libsignal-client.node` | see release |
+| `signalapp-libsignal-client-0.101.2-swarm.1.tgz` | `34719bf6eaec78b50a0b70ed1d36465de2b1dbcf712d9288971571efffcebfe4` |
+| `prebuilds/win32-x64/@signalapp+libsignal-client.node` | `f5f07db01c0867f67c00bd276ba7215e29ee0a6bfa57274a7b677ac1f94f2a6a` |
+| `prebuilds/linux-x64/@signalapp+libsignal-client.node` | `541d839dc8ce43adab21460d0e9b54e84f45ae513967e69de09ea14ef0cd85ef` |
+| `prebuilds/darwin-arm64/@signalapp+libsignal-client.node` | `c5657e5fd393e91a724dd5306d3d7fb561c11e5ca8eba779204e1a11c7201eb2` |
 
-Release page:
-<https://github.com/Swarm-Official/swarm-libsignal/releases/tag/swarm-libsignal-0.101.2-swarm.1>
+The three `.node` rows are also attached to the release on their own, as
+`libsignal-client-<platform>-<arch>.node`, each with a `SHA256SUMS-<platform>-<arch>.txt` written by
+the runner that built it. Those per-platform sums were computed on three different machines and they
+agree with the table above, so the libraries inside the tarball are the ones the CI runners built -
+nothing was rebuilt or repacked in between.
+
+### Provenance, precisely
+
+Worth knowing before you audit the tarball, because it is not a single-commit build:
+
+- The three native libraries were built by run
+  [36260619050](https://github.com/Swarm-Official/swarm-libsignal/actions/runs/36260619050) from
+  commit `f6843eab1` ("Match rustfmt on the SWARM additions").
+- The JavaScript, the type declarations and `package.json` were packed from `2630f1683` ("Record the
+  settled SWARM service hosts next to the chat host"), the current tip of `swarm-main`. That is why
+  `SWARM_HOSTS` and the four-host `swarm` block are in the package.
+
+The only Rust change between those two commits is `rust/net/src/env.rs`, +41 lines and zero
+deletions: the `pub const` hostname strings and the tests that assert them. None of those constants
+is referenced anywhere outside `env.rs`, and none is exported through the bridge, so none of them can
+appear in a `.node` binary - the natives are behaviourally identical to the tip. The mismatch is
+cosmetic, but it is real: for single-commit provenance, re-dispatch the release workflow at
+`2630f1683`, and expect every hash in the table above to change.
+
+The `package` job of that run failed, which is why the tarball was packed and hashed on the
+maintainer's machine rather than by CI. It failed *before it started*, on GitHub billing ("recent
+account payments have failed or your spending limit needs to be increased"), not on anything in this
+repository: the three build jobs ahead of it all passed, and `SWARM - tests` is green on the tip
+([36261683481](https://github.com/Swarm-Official/swarm-libsignal/actions/runs/36261683481)). The
+local pack did what that job would have done, and the per-platform sums above are the independent
+check on it. Re-dispatching the workflow will keep failing at `package` until the org's Actions
+billing is sorted out - that is an owner action, not a code fix.
