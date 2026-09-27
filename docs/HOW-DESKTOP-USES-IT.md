@@ -1,3 +1,8 @@
+> **Desktop only.** This guide belongs to `swarm-main` (upstream v0.101.2, release
+> `swarm-libsignal-0.101.2-swarm.1`) and is carried on this branch only because the SWARM
+> commits were cherry-picked whole. The Android and iOS apps use
+> [`SWARM-MOBILE.md`](SWARM-MOBILE.md).
+
 # How SWARM Messenger Desktop uses this library
 
 For Opus M-A (desktop). This is the consumption guide for
