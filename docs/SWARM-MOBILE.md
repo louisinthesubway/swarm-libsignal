@@ -63,7 +63,22 @@ Signal-Android verifies dependencies (`gradle/verification-metadata.xml`). Repla
 <!-- SWARM_ANDROID_VERIFICATION_METADATA -->
 ```
 
-### 4. Select the SWARM network
+### 4. What is inside
+
+`libsignal-android` is upstream's AAR layout: `jni/<abi>/libsignal_jni.so` and
+`libsignal_jni_testing.so` for arm64-v8a, armeabi-v7a, x86_64 and x86 (Signal-Android already
+leaves the testing library out of release builds), plus the Java/Kotlin classes, and it
+depends on `libsignal-client` of the same version. `libsignal-client` carries the desktop JNI
+libraries for Linux x86_64, macOS (x86_64, aarch64) and Windows x86_64, which the app's JVM unit
+tests load. One difference from upstream's packaging: the ELF libraries (Android and Linux) have
+their DWARF debug sections removed (`llvm-strip --strip-debug`; code, exported JNI symbols and the
+symbol table stay). With upstream's line tables the AAR is about 200 MB, over GitHub's 100 MB
+limit for the `maven` branch, and an APK is unaffected because the Android Gradle plugin strips
+native libraries when it packages the app. The unstripped libraries, exactly as built, are in
+the release asset `libsignal-jni-unstripped-0.102.2-swarm.1.tar.gz` for symbolicating native
+crashes.
+
+### 5. Select the SWARM network
 
 `app/build.gradle.kts` sets `LIBSIGNAL_NET_ENV` (line 299 for the production environment, line 501
 for staging, at v8.29.1). Point it at SWARM:

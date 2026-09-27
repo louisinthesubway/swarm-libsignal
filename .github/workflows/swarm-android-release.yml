@@ -7,7 +7,8 @@ run-name: "${{ github.event_name == 'workflow_dispatch' && format('SWARM - Andro
 #    org.signal:libsignal-client (JAR with the JNI libraries for linux-x86_64, macos-x86_64,
 #    macos-aarch64 and windows-x86_64, as upstream ships it), version = java/build.gradle;
 #  - the Java client test suite, run against the linux-x86_64 library that goes into the JAR;
-#  - a GitHub Release <tag> with the AAR, the JAR, the Maven repository as a zip and
+#  - a GitHub Release <tag> with the AAR, the JAR, the Maven repository as a zip, the unstripped
+#    ELF libraries (the ones in the AAR and JAR lose their DWARF sections; see the strip step) and
 #    SHA256SUMS.txt;
 #  - the same Maven repository on the orphan `maven` branch, which Gradle reads from
 #    https://raw.githubusercontent.com/Swarm-Official/swarm-libsignal/maven/
@@ -238,6 +239,28 @@ jobs:
           find java/android/src/main/jniLibs java/client/src/main/resources -type f \
             \( -name '*.so' -o -name '*.dylib' -o -name '*.dll' \) -exec ls -l {} +
 
+      # Upstream builds its JNI libraries with line tables (CARGO_PROFILE_RELEASE_DEBUG=1) and leaves
+      # stripping to the app; that makes libsignal_jni.so about 118 MB and libsignal_jni_testing.so
+      # about 141 MB per Android ABI, an AAR of about 200 MB and a JAR near 100 MB. GitHub refuses
+      # files over 100 MB in a git push, so the maven branch could not hold them. The libraries
+      # that go into the AAR and the JAR therefore lose their DWARF debug sections here
+      # (llvm-strip --strip-debug: code, exported JNI symbols and the symbol table stay), which
+      # changes nothing in an APK: the Android Gradle plugin strips native libraries when it
+      # packages an app anyway. The unstripped libraries are kept, byte for byte as built, in a
+      # release asset for symbolicating native crashes.
+      - name: Keep the unstripped ELF libraries, then strip their debug sections
+        run: |
+          set -euo pipefail
+          llvm_strip="${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
+          mkdir -p out/dist
+          tar -c -z -f "out/dist/libsignal-jni-unstripped-$VERSION.tar.gz" \
+            java/android/src/main/jniLibs java/client/src/main/resources/*.so
+          for lib in java/android/src/main/jniLibs/*/*.so java/client/src/main/resources/*.so; do
+            before=$(stat -c %s "$lib")
+            "$llvm_strip" --strip-debug "$lib"
+            echo "$lib: $before -> $(stat -c %s "$lib") bytes"
+          done
+
       - name: Start from the published Maven repository, if there is one
         run: |
           set -euo pipefail
@@ -284,7 +307,6 @@ jobs:
             exit 1
           fi
 
-          mkdir -p out/dist
           cp "$aar" "$jar" out/dist/
           (cd "$repo" && zip -q -r -X "$GITHUB_WORKSPACE/out/dist/swarm-libsignal-maven-$VERSION.zip" org)
           cp -R "$repo" out/swarm-maven
