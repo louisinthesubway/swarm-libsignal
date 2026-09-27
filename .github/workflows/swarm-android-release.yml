@@ -498,9 +498,11 @@ jobs:
           application {
               mainClass = 'check.Check'
           }
+          def resolvedFiles = configurations.runtimeClasspath.plus(configurations.androidAar)
           tasks.register('printResolved') {
+              inputs.files(resolvedFiles)
               doLast {
-                  (configurations.runtimeClasspath.files + configurations.androidAar.files).each { println it }
+                  resolvedFiles.each { println it }
               }
           }
           EOF
