@@ -71,10 +71,10 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "archive=libsignal-client-ios-build-v$version.tar.gz" >> "$GITHUB_OUTPUT"
 
-      - name: Use the newest Xcode 26 (upstream builds the pod with Xcode 26.3)
+      - name: Use Xcode 26.3, as upstream's CI does
         run: |
           set -euo pipefail
-          xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -n 1)
+          xcode=$(ls -d /Applications/Xcode_26.3*.app | sort -V | tail -n 1)
           echo "Using $xcode"
           echo "DEVELOPER_DIR=$xcode/Contents/Developer" >> "$GITHUB_ENV"
 
@@ -230,10 +230,10 @@ jobs:
           name: ios-release
           path: out
 
-      - name: Use the newest Xcode 26
+      - name: Use Xcode 26.3, as upstream's CI does
         run: |
           set -euo pipefail
-          xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -n 1)
+          xcode=$(ls -d /Applications/Xcode_26.3*.app | sort -V | tail -n 1)
           echo "Using $xcode"
           echo "DEVELOPER_DIR=$xcode/Contents/Developer" >> "$GITHUB_ENV"
 
