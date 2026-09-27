@@ -1,0 +1,116 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "org.signal",
+    "module": "libsignal-client",
+    "version": "0.102.2-swarm.1",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.4.1"
+    }
+  },
+  "variants": [
+    {
+      "name": "apiElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.jvm.version": 21,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.20"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "libsignal-client-0.102.2-swarm.1.jar",
+          "url": "libsignal-client-0.102.2-swarm.1.jar",
+          "size": 81265672,
+          "sha512": "9cb0213cd88f0fabe67b321871526e09954f14219c91c413b02a03db802194dba3bab8058c455ff37cbd57e165ababd107d7440871e3c3a3debfc3b4bf76f7f9",
+          "sha256": "1b029d0e4d9a8841d4e49ae9360711309d7a5635dfb92ebd43fe245adc22f1b2",
+          "sha1": "ddd751ac3a9f14bd8aa43fc733c0fe81365df66e",
+          "md5": "570a8b33b1597ba3bca79eaeb922774a"
+        }
+      ]
+    },
+    {
+      "name": "runtimeElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.jvm.version": 21,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-coroutines-core",
+          "version": {
+            "requires": "1.10.2"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-serialization-json",
+          "version": {
+            "requires": "1.9.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.20"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "libsignal-client-0.102.2-swarm.1.jar",
+          "url": "libsignal-client-0.102.2-swarm.1.jar",
+          "size": 81265672,
+          "sha512": "9cb0213cd88f0fabe67b321871526e09954f14219c91c413b02a03db802194dba3bab8058c455ff37cbd57e165ababd107d7440871e3c3a3debfc3b4bf76f7f9",
+          "sha256": "1b029d0e4d9a8841d4e49ae9360711309d7a5635dfb92ebd43fe245adc22f1b2",
+          "sha1": "ddd751ac3a9f14bd8aa43fc733c0fe81365df66e",
+          "md5": "570a8b33b1597ba3bca79eaeb922774a"
+        }
+      ]
+    },
+    {
+      "name": "sourcesElements",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "libsignal-client-0.102.2-swarm.1-sources.jar",
+          "url": "libsignal-client-0.102.2-swarm.1-sources.jar",
+          "size": 318961,
+          "sha512": "8c79676e13893feb4ffd15070c82ce818acb0d563b829a60900aebc398a2fd3fd71d9b4c96ba43b2b7380e338999067edc100fe3445931a6ad8ee3421119d05d",
+          "sha256": "9511377400817b2607683c755424d010f8b934875a26f19f895cdf7817bbd9bc",
+          "sha1": "7c0e1ed841c0a5d842d1360a2a7287ce59c0aa1f",
+          "md5": "dbeac40dec06570bb15c549c3a3d038a"
+        }
+      ]
+    }
+  ]
+}

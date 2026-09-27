@@ -1,0 +1,97 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "org.signal",
+    "module": "libsignal-android",
+    "version": "0.102.2-swarm.1",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.4.1"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseVariantReleaseApiPublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "org.signal",
+          "module": "libsignal-client",
+          "version": {
+            "requires": "0.102.2-swarm.1"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.20"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "libsignal-android-0.102.2-swarm.1.aar",
+          "url": "libsignal-android-0.102.2-swarm.1.aar",
+          "size": 45055723,
+          "sha512": "41f791dddae6d6920ef8794f32b328e45ba29d2148539b576b71198debfea0d75c3aa900d642bc5c56038d6312f6fc47112a0338ab01518eeed3f99a694bd9f6",
+          "sha256": "6edcc0cf10d5d9c56c539e62bd157fe988039a0388642f0519df2f96b7410ad7",
+          "sha1": "9970b6c8266abe14e3d7992384c2c8dc529ff46c",
+          "md5": "9f0cbc1cd9826d30387812aadc0aaa30"
+        }
+      ]
+    },
+    {
+      "name": "releaseVariantReleaseRuntimePublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-coroutines-android",
+          "version": {
+            "requires": "1.10.2"
+          }
+        },
+        {
+          "group": "org.signal",
+          "module": "libsignal-client",
+          "version": {
+            "requires": "0.102.2-swarm.1"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.20"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "libsignal-android-0.102.2-swarm.1.aar",
+          "url": "libsignal-android-0.102.2-swarm.1.aar",
+          "size": 45055723,
+          "sha512": "41f791dddae6d6920ef8794f32b328e45ba29d2148539b576b71198debfea0d75c3aa900d642bc5c56038d6312f6fc47112a0338ab01518eeed3f99a694bd9f6",
+          "sha256": "6edcc0cf10d5d9c56c539e62bd157fe988039a0388642f0519df2f96b7410ad7",
+          "sha1": "9970b6c8266abe14e3d7992384c2c8dc529ff46c",
+          "md5": "9f0cbc1cd9826d30387812aadc0aaa30"
+        }
+      ]
+    }
+  ]
+}
