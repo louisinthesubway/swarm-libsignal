@@ -20,6 +20,19 @@ public class Net {
 
         /// Signal's production environment.
         case production = 1
+
+        // SWARM additions (see docs/SWARM-CHANGES.md). The numbering continues upstream's.
+
+        /// The SWARM network: `chat.swarm.green`, TLS 1.3, publicly trusted certificates.
+        ///
+        /// SWARM deploys no contact discovery (CDSI) and no secure value recovery (SVR2/SVRB): those
+        /// endpoints are placeholders that cannot connect, so those features must stay switched off in the
+        /// app. There is no censorship-circumvention proxy either, so
+        /// ``Net/setCensorshipCircumventionEnabled(_:)`` is a no-op here.
+        case swarm = 2
+
+        /// As ``swarm``, but `staging.chat.swarm.green` and TLS 1.2 or better.
+        case swarmStaging = 3
     }
 
     /// Build variant for remote config key selection.

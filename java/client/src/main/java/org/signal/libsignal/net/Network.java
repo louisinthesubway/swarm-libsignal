@@ -23,7 +23,18 @@ import org.signal.libsignal.net.internal.ConnectChatBridge;
 public class Network {
   public enum Environment {
     STAGING(0),
-    PRODUCTION(1);
+    PRODUCTION(1),
+    // SWARM additions (see docs/SWARM-CHANGES.md). The numbering continues upstream's and must
+    // match the Rust bridge enum in rust/bridge/shared/types/src/net.rs.
+    //
+    // SWARM deploys no contact discovery (CDSI) and no secure value recovery (SVR2/SVRB): those
+    // endpoints are placeholders that cannot connect, so those features must stay switched off in
+    // the app. There is no censorship-circumvention proxy either, so
+    // setCensorshipCircumventionEnabled(true) is a no-op in these environments.
+    /** The SWARM network: {@code chat.swarm.green}, TLS 1.3, publicly trusted certificates. */
+    SWARM(2),
+    /** The SWARM staging network: {@code staging.chat.swarm.green}, TLS 1.2 or better. */
+    SWARM_STAGING(3);
 
     // Intentionally package-private to be used in KeyTransparencyClient, without exposing it to the
     // whole world.
