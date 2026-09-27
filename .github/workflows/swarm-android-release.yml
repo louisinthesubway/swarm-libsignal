@@ -314,10 +314,12 @@ jobs:
           # One file for everything: the release assets by name, and every file of this version in
           # the Maven repository by its path in the repository (so `sha256sum -c --ignore-missing`
           # works both on downloaded release assets and in a checkout of the maven branch).
+          # (Written outside out/dist first, so the list does not include itself.)
           {
             (cd out/dist && sha256sum -- *)
             (cd "$repo" && find org -path "*/$VERSION/*" -type f | sort | xargs sha256sum --)
-          } > out/dist/SHA256SUMS.txt
+          } > out/SHA256SUMS.txt
+          mv out/SHA256SUMS.txt out/dist/SHA256SUMS.txt
           cat out/dist/SHA256SUMS.txt
 
       - uses: actions/upload-artifact@v4
