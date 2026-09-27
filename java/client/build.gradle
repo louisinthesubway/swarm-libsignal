@@ -120,13 +120,13 @@ publishing {
 
             pom {
                 name = base.archivesName.get()
-                description = 'Signal Protocol cryptography library for Java'
-                url = 'https://github.com/signalapp/libsignal'
+                description = 'Signal Protocol cryptography library for Java; SWARM build with the SWARM network environment (https://github.com/Swarm-Official/swarm-libsignal)'
+                url = 'https://github.com/Swarm-Official/swarm-libsignal'
 
                 scm {
-                    url = 'scm:git@github.com:signalapp/libsignal.git'
-                    connection = 'scm:git@github.com:signalapp/libsignal.git'
-                    developerConnection = 'scm:git@github.com:signalapp/libsignal.git'
+                    url = 'scm:git@github.com:Swarm-Official/swarm-libsignal.git'
+                    connection = 'scm:git@github.com:Swarm-Official/swarm-libsignal.git'
+                    developerConnection = 'scm:git@github.com:Swarm-Official/swarm-libsignal.git'
                 }
 
                 licenses {

@@ -1,0 +1,516 @@
+name: "SWARM - Android release"
+run-name: "SWARM - Android release (${{ github.ref_name }}, ${{ inputs.tag }}, publish=${{ inputs.publish }})"
+
+# Builds the SWARM libsignal for Android from this branch and publishes it (docs/SWARM-MOBILE.md):
+#
+#  - org.signal:libsignal-android (AAR: arm64-v8a, armeabi-v7a, x86_64, x86) and
+#    org.signal:libsignal-client (JAR with the JNI libraries for linux-x86_64, macos-x86_64,
+#    macos-aarch64 and windows-x86_64, as upstream ships it), version = java/build.gradle;
+#  - the Java client test suite, run against the linux-x86_64 library that goes into the JAR;
+#  - a GitHub Release <tag> with the AAR, the JAR, the Maven repository as a zip and
+#    SHA256SUMS.txt;
+#  - the same Maven repository on the orphan `maven` branch, which Gradle reads from
+#    https://raw.githubusercontent.com/Swarm-Official/swarm-libsignal/maven/
+#  - a consumer check: a fresh Gradle build resolves both artifacts from that URL, and a Java
+#    program loads the published JAR and constructs Network(Network.Environment.SWARM, ...).
+#
+# Upstream's "Release - Java" (jni_artifacts.yml) publishes to Signal's own bucket with Signal's
+# credentials and its Docker build uses Signal's apt mirror; neither is used here. Everything runs
+# on GitHub-hosted runners and nothing contacts Signal's servers.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag; must be swarm-libsignal-<version in java/build.gradle>"
+        required: true
+        default: "swarm-libsignal-0.102.2-swarm.1"
+      publish:
+        description: "Publish the release and the maven branch (off: build and test only)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  NDK_VERSION: 28.0.13004108
+
+jobs:
+  version:
+    name: Check the tag against java/build.gradle
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: version
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          version=$(sed -En 's/^ *version *= *"(.+)"$/\1/p' java/build.gradle)
+          echo "java/build.gradle version: $version"
+          if [ "$TAG" != "swarm-libsignal-$version" ]; then
+            echo "::error::tag $TAG does not match java/build.gradle version $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  android-jni:
+    name: Android JNI (${{ matrix.abi }})
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - abi: arm64-v8a
+            target: aarch64-linux-android
+            build: android-arm64
+          - abi: armeabi-v7a
+            target: armv7-linux-androideabi
+            build: android-arm
+          - abi: x86_64
+            target: x86_64-linux-android
+            build: android-x86_64
+          - abi: x86
+            target: i686-linux-android
+            build: android-x86
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install NDK ${{ env.NDK_VERSION }}
+        run: |
+          set -euo pipefail
+          "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" --install "ndk;${NDK_VERSION}" > /dev/null
+          echo "ANDROID_NDK_HOME=${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+
+      - name: Install protoc
+        run: ./bin/install_protoc_linux
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - run: rustup toolchain install "$(cat rust-toolchain)" --profile minimal --target ${{ matrix.target }}
+
+      - name: Build libsignal_jni for ${{ matrix.abi }}
+        run: java/build_jni.sh ${{ matrix.build }}
+
+      - name: The library carries the SWARM environment
+        run: |
+          set -euo pipefail
+          ls -l java/android/src/main/jniLibs/${{ matrix.abi }}/
+          grep -c -a -F chat.swarm.green java/android/src/main/jniLibs/${{ matrix.abi }}/libsignal_jni.so
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jni-android-${{ matrix.abi }}
+          path: java/android/src/main/jniLibs/${{ matrix.abi }}/
+          if-no-files-found: error
+          retention-days: 7
+
+  desktop-jni:
+    name: Desktop JNI (${{ matrix.label }})
+    needs: version
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          # glibc 2.35, like upstream's Docker image (ubuntu:jammy), so the JAR loads on older
+          # Linux systems too.
+          - os: ubuntu-22.04
+            label: linux-x86_64
+          - os: macos-15
+            label: macos
+            additional-rust-target: x86_64-apple-darwin
+          - os: windows-latest
+            label: windows-x86_64
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: rustup toolchain install "$(cat rust-toolchain)" --profile minimal
+        shell: bash
+
+      - run: rustup target add --toolchain "$(cat rust-toolchain)" "${{ matrix.additional-rust-target }}"
+        if: matrix.additional-rust-target != ''
+        shell: bash
+
+      - name: (Linux) Install protoc
+        if: runner.os == 'Linux'
+        run: ./bin/install_protoc_linux
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: (Windows) Install nasm and protoc
+        if: runner.os == 'Windows'
+        run: |
+          choco install nasm --no-progress -y
+          choco install protoc --no-progress -y
+        shell: cmd
+
+      - name: (macOS) Install protobuf
+        if: runner.os == 'macOS'
+        run: brew install protobuf
+
+      - name: Build libsignal_jni for the host
+        run: java/build_jni.sh desktop
+        shell: bash
+
+      - name: (macOS) Build libsignal_jni for x86_64 as well
+        if: matrix.additional-rust-target != ''
+        run: java/build_jni.sh desktop
+        shell: bash
+        env:
+          CARGO_BUILD_TARGET: ${{ matrix.additional-rust-target }}
+
+      - name: List the libraries
+        run: ls -l java/client/src/main/resources/
+        shell: bash
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jni-desktop-${{ matrix.label }}
+          path: |
+            java/client/src/main/resources/*.so
+            java/client/src/main/resources/*.dylib
+            java/client/src/main/resources/*.dll
+          if-no-files-found: error
+          retention-days: 7
+
+  package:
+    name: AAR, JAR, Maven repository and Java tests
+    needs: [version, android-jni, desktop-jni]
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      SWARM_MAVEN_REPO_DIR: ${{ github.workspace }}/swarm-maven
+    steps:
+      - run: echo "JAVA_HOME=$JAVA_HOME_21_X64" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v4
+
+      - name: Install NDK ${{ env.NDK_VERSION }} (the Android Gradle plugin resolves it)
+        run: |
+          set -euo pipefail
+          "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" --install "ndk;${NDK_VERSION}" > /dev/null
+
+      # Only for `cargo metadata` (java/android/build.gradle checks the rustls-platform-verifier
+      # version); nothing is compiled in this job.
+      - run: rustup toolchain install "$(cat rust-toolchain)" --profile minimal
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: jni-android-*
+          path: incoming/android
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: jni-desktop-*
+          path: java/client/src/main/resources
+          merge-multiple: true
+
+      - name: Put the libraries where the Gradle build expects them
+        run: |
+          set -euo pipefail
+          for abi in arm64-v8a armeabi-v7a x86_64 x86; do
+            mkdir -p "java/android/src/main/jniLibs/$abi"
+            cp "incoming/android/jni-android-$abi/"*.so "java/android/src/main/jniLibs/$abi/"
+            test -f "java/android/src/main/jniLibs/$abi/libsignal_jni.so"
+          done
+          for lib in libsignal_jni_amd64.so libsignal_jni_amd64.dylib libsignal_jni_aarch64.dylib signal_jni_amd64.dll; do
+            test -f "java/client/src/main/resources/$lib" || { echo "::error::missing $lib"; exit 1; }
+          done
+          find java/android/src/main/jniLibs java/client/src/main/resources -type f \
+            \( -name '*.so' -o -name '*.dylib' -o -name '*.dll' \) -exec ls -l {} +
+
+      - name: Start from the published Maven repository, if there is one
+        run: |
+          set -euo pipefail
+          mkdir -p "$SWARM_MAVEN_REPO_DIR"
+          if git ls-remote --exit-code origin refs/heads/maven > /dev/null; then
+            git fetch --depth 1 origin maven
+            git archive FETCH_HEAD org | tar -x -C "$SWARM_MAVEN_REPO_DIR"
+            if [ -d "$SWARM_MAVEN_REPO_DIR/org/signal/libsignal-android/$VERSION" ]; then
+              echo "::error::$VERSION is already on the maven branch; bump the version instead"
+              exit 1
+            fi
+          fi
+
+      - name: Java client tests, AAR and JAR, published into the local Maven repository
+        working-directory: java
+        run: |
+          ./gradlew --dependency-verification strict \
+            --init-script ../.github/swarm/maven-repository.init.gradle \
+            -x :makeJniLibrariesDesktop -x :android:makeJniLibraries \
+            :client:test \
+            :client:publishMavenJavaPublicationToSwarmLocalRepository \
+            :android:publishMavenJavaPublicationToSwarmLocalRepository
+
+      - name: Check and collect the artifacts
+        run: |
+          set -euo pipefail
+          repo="$SWARM_MAVEN_REPO_DIR"
+          aar="$repo/org/signal/libsignal-android/$VERSION/libsignal-android-$VERSION.aar"
+          jar="$repo/org/signal/libsignal-client/$VERSION/libsignal-client-$VERSION.jar"
+          ls -l "$aar" "$jar"
+
+          echo "AAR native libraries:"
+          unzip -l "$aar" | grep '\.so$'
+          for abi in arm64-v8a armeabi-v7a x86_64 x86; do
+            unzip -l "$aar" | grep -q " jni/$abi/libsignal_jni.so$" || { echo "::error::AAR lacks $abi"; exit 1; }
+          done
+          echo "JAR native libraries:"
+          unzip -l "$jar" | grep -E '\.(so|dylib|dll)$'
+
+          # GitHub refuses files over 100 MB in a git push; stay clear of it.
+          big=$(find "$repo" -type f -size +95M)
+          if [ -n "$big" ]; then
+            echo "::error::too large for the maven branch: $big"
+            exit 1
+          fi
+
+          mkdir -p out/dist
+          cp "$aar" "$jar" out/dist/
+          (cd "$repo" && zip -q -r -X "$GITHUB_WORKSPACE/out/dist/swarm-libsignal-maven-$VERSION.zip" org)
+          cp -R "$repo" out/swarm-maven
+
+          # One file for everything: the release assets by name, and every file of this version in
+          # the Maven repository by its path in the repository (so `sha256sum -c --ignore-missing`
+          # works both on downloaded release assets and in a checkout of the maven branch).
+          {
+            (cd out/dist && sha256sum -- *)
+            (cd "$repo" && find org -path "*/$VERSION/*" -type f | sort | xargs sha256sum --)
+          } > out/dist/SHA256SUMS.txt
+          cat out/dist/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-release
+          path: out/
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish the release and the maven branch
+    needs: [version, package]
+    if: ${{ inputs.publish }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ inputs.tag }}
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-release
+          path: out
+
+      - name: Refuse to replace an existing release or tag
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" > /dev/null 2>&1 || git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null; then
+            echo "::error::$TAG already exists; bump the version instead"
+            exit 1
+          fi
+
+      - name: Write the release notes
+        run: |
+          set -euo pipefail
+          upstream="upstream-v${VERSION%-swarm.*}"
+          git fetch --no-tags origin "refs/tags/$upstream:refs/tags/$upstream"
+          crypto_paths="rust/protocol rust/crypto rust/zkgroup rust/zkcredential rust/poksho rust/attest rust/svrb rust/keytrans rust/core rust/account-keys rust/usernames rust/media rust/message-backup rust/device-transfer"
+          {
+            echo "SWARM build of libsignal **$VERSION** for Android, from branch \`$GITHUB_REF_NAME\` at \`$GITHUB_SHA\` (upstream base \`$upstream\` = $(git rev-parse --short "$upstream^{commit}"))."
+            echo
+            echo "Adds the SWARM network environment (\`Network.Environment.SWARM\` = chat.swarm.green, \`SWARM_STAGING\` = staging.chat.swarm.green). Consumption: [docs/SWARM-MOBILE.md](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_SHA/docs/SWARM-MOBILE.md). What changed and why: [docs/SWARM-CHANGES.md](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_SHA/docs/SWARM-CHANGES.md)."
+            echo
+            echo "Gradle repository: \`https://raw.githubusercontent.com/$GITHUB_REPOSITORY/maven/\` (group \`org.signal\`, artifacts \`libsignal-android\` and \`libsignal-client\`, version \`$VERSION\`)."
+            echo
+            echo "Built and tested by $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID on GitHub-hosted runners. Not signed; verify with SHA256SUMS.txt. A pre-release: not audited, not production-hardened."
+            echo
+            echo "### \`git diff --stat $upstream..$GITHUB_SHA\`"
+            echo
+            echo '```'
+            git diff --stat=120 "$upstream" "$GITHUB_SHA"
+            echo '```'
+            echo
+            if git diff --quiet "$upstream" "$GITHUB_SHA" -- $crypto_paths; then
+              echo "No change under: $crypto_paths."
+            else
+              echo "**Changes under cryptographic paths:**"
+              echo '```'
+              git diff --stat "$upstream" "$GITHUB_SHA" -- $crypto_paths
+              echo '```'
+            fi
+            echo
+            echo "### SHA256SUMS.txt"
+            echo
+            echo '```'
+            cat out/dist/SHA256SUMS.txt
+            echo '```'
+          } > notes.md
+          cat notes.md
+
+      - name: Create the release
+        run: |
+          gh release create "$TAG" out/dist/* \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "swarm-libsignal $VERSION (Android)" \
+            --notes-file notes.md
+
+      - name: Push the Maven repository to the maven branch
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code origin refs/heads/maven > /dev/null; then
+            git fetch origin maven
+            git worktree add -B maven maven-branch origin/maven
+          else
+            git worktree add --orphan -b maven maven-branch
+          fi
+          cp -R out/swarm-maven/. maven-branch/
+          cat > maven-branch/README.md <<EOF
+          # swarm-libsignal Maven repository
+
+          A plain Maven repository for Gradle, served from this branch at
+          \`https://raw.githubusercontent.com/$GITHUB_REPOSITORY/maven/\`.
+          Artifacts: \`org.signal:libsignal-android\` and \`org.signal:libsignal-client\`, SWARM builds of
+          libsignal with the SWARM network environment. How to use them, and their SHA-256 sums:
+          docs/SWARM-MOBILE.md on the matching source branch, and the release of the same name as the
+          version (e.g. swarm-libsignal-$VERSION).
+
+          This branch holds build outputs only, written by the "SWARM - Android release" workflow. No
+          source code lives here.
+          EOF
+          cd maven-branch
+          git add -A
+          git commit -q -m "Publish org.signal:libsignal-android and libsignal-client $VERSION" \
+            -m "Built from $GITHUB_SHA by $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID; release $TAG."
+          git push origin maven
+          git log --oneline -3
+
+  consumer-check:
+    name: Consumer check (Gradle resolves from the maven branch, the JAR selects SWARM)
+    needs: [version, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      REPO_URL: https://raw.githubusercontent.com/${{ github.repository }}/maven/
+    steps:
+      - run: echo "JAVA_HOME=$JAVA_HOME_21_X64" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-release
+          path: out
+
+      - name: The raw URL serves exactly the published bytes
+        run: |
+          set -euo pipefail
+          mkdir -p fetched
+          cd fetched
+          grep ' org/signal/' ../out/dist/SHA256SUMS.txt | while read -r sum path; do
+            mkdir -p "$(dirname "$path")"
+            for attempt in 1 2 3 4 5 6; do
+              curl -fsSL -o "$path" "$REPO_URL$path" && break
+              sleep 20
+            done
+          done
+          grep ' org/signal/' ../out/dist/SHA256SUMS.txt | sha256sum -c -
+
+      - name: A fresh Gradle build resolves the artifacts and the JAR selects SWARM
+        run: |
+          set -euo pipefail
+          mkdir -p consumer/src/main/java/check
+          cat > consumer/settings.gradle <<EOF
+          rootProject.name = 'swarm-libsignal-consumer-check'
+          EOF
+          cat > consumer/build.gradle <<EOF
+          plugins {
+              id 'application'
+          }
+          repositories {
+              // The JAR through its Gradle module metadata, as an Android or JVM build reads it.
+              exclusiveContent {
+                  forRepository {
+                      maven {
+                          name = 'swarmLibsignal'
+                          url = uri('$REPO_URL')
+                      }
+                  }
+                  filter {
+                      includeModule('org.signal', 'libsignal-client')
+                  }
+              }
+              // The AAR through its POM only: a plain JVM build cannot match the Android variants
+              // in the module metadata, and only has to prove the file resolves.
+              exclusiveContent {
+                  forRepository {
+                      maven {
+                          name = 'swarmLibsignalPom'
+                          url = uri('$REPO_URL')
+                          metadataSources {
+                              mavenPom()
+                              artifact()
+                          }
+                      }
+                  }
+                  filter {
+                      includeModule('org.signal', 'libsignal-android')
+                  }
+              }
+              mavenCentral()
+          }
+          configurations {
+              androidAar { transitive = false }
+          }
+          dependencies {
+              implementation 'org.signal:libsignal-client:$VERSION'
+              androidAar 'org.signal:libsignal-android:$VERSION@aar'
+          }
+          application {
+              mainClass = 'check.Check'
+          }
+          tasks.register('printResolved') {
+              doLast {
+                  (configurations.runtimeClasspath.files + configurations.androidAar.files).each { println it }
+              }
+          }
+          EOF
+          cat > consumer/src/main/java/check/Check.java <<EOF
+          package check;
+
+          import java.util.Map;
+          import org.signal.libsignal.net.Network;
+
+          public class Check {
+            public static void main(String[] args) {
+              Network net =
+                  new Network(
+                      Network.Environment.SWARM, "swarm-consumer-check", Map.of(), Network.BuildVariant.PRODUCTION);
+              net.setCensorshipCircumventionEnabled(true);
+              System.out.println("Network created for " + Network.Environment.SWARM + " from the published JAR");
+            }
+          }
+          EOF
+          java/gradlew -p consumer --no-daemon printResolved run

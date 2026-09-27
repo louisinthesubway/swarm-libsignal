@@ -1,14 +1,27 @@
 name: "SWARM - tests"
 
-# Fast validation of the SWARM environment changes (docs/SWARM-CHANGES.md).
-# Nothing here contacts any server.
+# Validation of the SWARM changes (docs/SWARM-CHANGES.md) on the mobile branches:
+#  - Rust: libsignal-net (lib, integration tests and doctests; the non-hermetic tests skip
+#    themselves) and libsignal-bridge-types, plus rustfmt over the workspace;
+#  - Java: the JNI bindings are unchanged, the client test suite passes (it includes the SWARM
+#    environment tests in NetworkTest), and spotless is clean;
+#  - Swift: the FFI header is unchanged and the Swift package tests pass (they include the SWARM
+#    environment tests in NetTests.swift); swift-format and swiftlint over the two Swift files
+#    SWARM touches, advisory only;
+#  - Node TypeScript (the SWARM enum values are there too; the Node package is not released
+#    from these branches).
+# Nothing here contacts any server: the SWARM environment tests aim their connection attempts
+# at a refusing proxy on 127.0.0.1.
 
 on:
   push:
-    branches: [swarm-main]
+    branches: [swarm-v0.102.2, swarm-v0.102.3]
   pull_request:
-    branches: [swarm-main]
+    branches: [swarm-v0.102.2, swarm-v0.102.3]
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -33,18 +46,99 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          key: swarm-tests
+          key: swarm-tests-rust
           cache-on-failure: true
 
-      - name: cargo test -p libsignal-net (lib)
-        run: cargo test -p libsignal-net --lib
+      - name: cargo test -p libsignal-net
+        run: cargo test -p libsignal-net
 
       - name: cargo test -p libsignal-bridge-types (lib)
         run: cargo test -p libsignal-bridge-types --lib
 
-      - name: Check the formatting of the files we changed
-        continue-on-error: true
-        run: rustfmt --edition 2024 --check rust/net/src/env.rs rust/net/src/certs.rs rust/net/build.rs rust/bridge/shared/types/src/net.rs rust/bridge/shared/testing/src/net_env.rs
+      - name: rustfmt
+        run: cargo fmt --all -- --check
+
+  java:
+    name: Java (JNI bindings, client tests, spotless)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - run: echo "JAVA_HOME=$JAVA_HOME_21_X64" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v4
+
+      - name: Install protoc
+        run: ./bin/install_protoc_linux
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - run: rustup toolchain install "$(cat rust-toolchain)" --profile minimal
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: swarm-tests-java
+          cache-on-failure: true
+
+      - name: Verify that the JNI bindings are up to date
+        run: cargo run -p libsignal-jni-native_kt -- --verify
+
+      - name: Java client tests (builds the Linux JNI library) and spotless
+        working-directory: java
+        run: ./gradlew --dependency-verification strict :client:test spotlessCheck -PskipAndroid
+
+  swift:
+    name: Swift package (FFI bindings, tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: swift --version
+
+      - run: rustup toolchain install "$(cat rust-toolchain)" --profile minimal
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: swarm-tests-swift
+          cache-on-failure: true
+
+      - name: Install protoc
+        run: ./bin/install_protoc_linux
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - run: swift/verify_error_codes.sh
+
+      - name: Build libsignal-ffi (debug) and verify the FFI header
+        run: swift/build_ffi.sh -d -v --verify-ffi
+
+      - name: Swift tests
+        run: swift test -v
+        working-directory: swift
+
+  swift-style:
+    name: Swift format and lint of the SWARM-touched files (advisory)
+    runs-on: macos-15
+    timeout-minutes: 20
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use the newest Xcode 26 (upstream lints with Xcode 26.3)
+        run: |
+          set -euo pipefail
+          xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -n 1)
+          echo "Using $xcode"
+          echo "DEVELOPER_DIR=$xcode/Contents/Developer" >> "$GITHUB_ENV"
+
+      - run: brew install swiftlint
+
+      - name: swift-format
+        run: swift format lint --strict --configuration .swift-format swift/Sources/LibSignalClient/Net.swift swift/Tests/LibSignalClientTests/NetTests.swift
+
+      - name: swiftlint
+        working-directory: swift
+        run: swiftlint lint --strict Sources/LibSignalClient/Net.swift Tests/LibSignalClientTests/NetTests.swift
 
   node-typescript:
     name: Node TypeScript

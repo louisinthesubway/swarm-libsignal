@@ -1,0 +1,23 @@
+// SWARM: used by .github/workflows/swarm-android-release.yml.
+//
+// Adds a file-system Maven repository named "SwarmLocal" (the directory in $SWARM_MAVEN_REPO_DIR)
+// to every project that publishes, so the workflow can run
+// publishMavenJavaPublicationToSwarmLocalRepository and ship the result as the `maven` branch and
+// a release zip. Upstream's own repository (Signal's bucket) stays declared in java/build.gradle
+// but is never published to by the SWARM workflows.
+
+def swarmRepoDir = System.getenv('SWARM_MAVEN_REPO_DIR')
+if (!swarmRepoDir) {
+    throw new GradleException('SWARM_MAVEN_REPO_DIR is not set')
+}
+
+allprojects { project ->
+    project.plugins.withId('maven-publish') {
+        project.extensions.configure(org.gradle.api.publish.PublishingExtension) { publishing ->
+            publishing.repositories.maven { repo ->
+                repo.name = 'SwarmLocal'
+                repo.url = project.uri(swarmRepoDir)
+            }
+        }
+    }
+}

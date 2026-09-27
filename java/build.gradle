@@ -22,7 +22,8 @@ repositories {
 }
 
 allprojects {
-    version = "0.102.2"
+    // SWARM: the fork's own version, so these artifacts can never be mistaken for upstream's.
+    version = "0.102.2-swarm.1"
     group   = "org.signal"
 
     tasks.withType(JavaCompile) {
