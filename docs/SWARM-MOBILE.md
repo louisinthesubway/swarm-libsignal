@@ -109,18 +109,23 @@ let net = Net(env: .swarm, userAgent: userAgent, buildVariant: .production)
 ## What the SWARM environment does and does not do (both apps)
 
 - It changes the **libsignal chat connection only** (`chat.swarm.green`, TLS 1.3, publicly trusted
-  certificates, WebSocket over HTTP/1.1). Each app's REST, attachment (`cdn.chat.swarm.green`),
-  registration (`reg.chat.swarm.green`) and calling (`sfu.chat.swarm.green`) endpoints live in the
-  app's own configuration and must be pointed at SWARM there.
+  certificates, HTTP/2 with the websocket as an RFC 8441 extended CONNECT and gRPC on the same
+  connection, exactly as upstream dials its production chat host). Each app's REST, attachment
+  (`cdn.chat.swarm.green`), registration (`reg.chat.swarm.green`) and calling
+  (`sfu.chat.swarm.green`) endpoints live in the app's own configuration and must be pointed at
+  SWARM there.
 - SWARM deploys **no contact discovery (CDSI), no SVR2/SVRB and no key transparency**: those
   endpoints are placeholders that cannot connect (`service-not-deployed.swarm.invalid`, empty trust
   store), and the key transparency keys are zeroes. Keep contact discovery, PIN/backup recovery and
   key transparency switched off in the app.
 - **No censorship circumvention**: SWARM runs no reflectors, so
   `setCensorshipCircumventionEnabled(true)` is a logged no-op.
-- **Chat is WebSocket only**: typed APIs with both a WebSocket and a gRPC implementation use the
-  WebSocket one; APIs that exist only over gRPC cannot work against the SWARM chat host until it
-  offers gRPC. (From the code; not yet exercised against a live server.)
+- **The chat server must speak HTTP/2 and gRPC**: usernames, device management, registration
+  lock, discoverability, push tokens and backups go only over gRPC on the chat connection, and
+  libsignal panics ("requires an H2 connection") without it. `chat.swarm.green` must offer ALPN
+  `h2`, RFC 8441 extended CONNECT for the websocket, and route `application/grpc` to the chat
+  server (the SWARM edge does; see `SWARM-CHANGES.md`). `SWARM_STAGING` / `.swarmStaging` still
+  dials HTTP/1.1.
 
 ## Verification
 

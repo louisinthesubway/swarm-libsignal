@@ -344,8 +344,11 @@ const DOMAIN_CONFIG_CHAT_SWARM: DomainConfig = DomainConfig {
         cert: SWARM_ROOT_CERTIFICATES,
         // The SWARM chat host must serve TLS 1.3.
         min_tls_version: Some(SslVersion::TLS1_3),
-        // The websocket transport. gRPC over HTTP/2 is not offered by the SWARM server yet.
-        http_version: Some(HttpVersion::Http1_1),
+        // HTTP/2, as upstream's production chat config: the websocket opens as an RFC 8441
+        // extended CONNECT and gRPC (usernames, devices, backups, which exist only over gRPC)
+        // rides the same connection. The SWARM edge advertises extended CONNECT and routes
+        // application/grpc to the server's omnibus listener; see docs/SWARM-CHANGES.md.
+        http_version: Some(HttpVersion::Http2),
         // The SWARM chat server (a Signal-Server fork) still sends `x-signal-timestamp`, which is
         // how a real server response is told apart from a captive portal's.
         confirmation_header_name: Some(TIMESTAMP_HEADER_NAME),
@@ -1229,6 +1232,55 @@ mod test {
                 .as_ref()
                 .map(|header| header.as_str()),
             Some(TIMESTAMP_HEADER_NAME)
+        );
+    }
+
+    #[test]
+    fn swarm_prod_chat_uses_http2_like_upstream_prod() {
+        // Upstream sends username, device and backup calls only over gRPC on the chat
+        // connection's HTTP/2 connection, so the SWARM chat host is dialed the way upstream's
+        // production chat host is: TLS 1.3, ALPN h2, the timestamp confirmation header.
+        let connect = &SWARM.chat_domain_config.connect;
+        let upstream = &DOMAIN_CONFIG_CHAT.connect;
+        assert_eq!(connect.http_version, Some(HttpVersion::Http2));
+        assert_eq!(connect.http_version, upstream.http_version);
+        assert_eq!(connect.min_tls_version, upstream.min_tls_version);
+        assert_eq!(
+            connect.confirmation_header_name,
+            upstream.confirmation_header_name
+        );
+
+        // Exactly one route, direct to the chat host, negotiating h2 over TLS 1.3. There is no
+        // HTTP/1.1 route to fall back to (and no domain front), even with fronting enabled.
+        let routes = connect
+            .route_provider(
+                EnableDomainFronting::AllDomains,
+                OverrideNagleAlgorithm::UseSystemDefault,
+            )
+            .routes(&mut FakeContext::new())
+            .collect_vec();
+        assert_eq!(routes.len(), 1, "{routes:?}");
+        let route = &routes[0];
+        assert_eq!(route.fragment.http_version, Some(HttpVersion::Http2));
+        assert_eq!(&*route.fragment.host_header, SWARM_CHAT_HOSTNAME);
+        assert_eq!(&*route.fragment.path_prefix, "");
+        assert_eq!(route.inner.fragment.alpn, Some(Alpn::Http2));
+        assert_eq!(
+            route.inner.fragment.min_protocol_version,
+            Some(SslVersion::TLS1_3)
+        );
+        assert_eq!(
+            route.inner.fragment.sni,
+            Host::Domain(SWARM_CHAT_HOSTNAME.into())
+        );
+    }
+
+    #[test]
+    fn swarm_staging_chat_keeps_http1() {
+        // staging.chat.swarm.green has no deployment yet; it moves to HTTP/2 when one exists.
+        assert_eq!(
+            SWARM_STAGING.chat_domain_config.connect.http_version,
+            Some(HttpVersion::Http1_1)
         );
     }
 
