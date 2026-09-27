@@ -60,7 +60,22 @@ Signal-Android verifies dependencies (`gradle/verification-metadata.xml`). Repla
 `0.102.2` components with these (values from `SHA256SUMS.txt` of the release):
 
 ```xml
-<!-- SWARM_ANDROID_VERIFICATION_METADATA -->
+      <component group="org.signal" name="libsignal-android" version="0.102.2-swarm.1">
+         <artifact name="libsignal-android-0.102.2-swarm.1.aar">
+            <sha256 value="6edcc0cf10d5d9c56c539e62bd157fe988039a0388642f0519df2f96b7410ad7" origin="swarm-libsignal-0.102.2-swarm.1 SHA256SUMS.txt"/>
+         </artifact>
+         <artifact name="libsignal-android-0.102.2-swarm.1.module">
+            <sha256 value="c8082e9da9a968d91ea8110c90f1fdf89cf33c4f177052737df98cb1c6efbf73" origin="swarm-libsignal-0.102.2-swarm.1 SHA256SUMS.txt"/>
+         </artifact>
+      </component>
+      <component group="org.signal" name="libsignal-client" version="0.102.2-swarm.1">
+         <artifact name="libsignal-client-0.102.2-swarm.1.jar">
+            <sha256 value="1b029d0e4d9a8841d4e49ae9360711309d7a5635dfb92ebd43fe245adc22f1b2" origin="swarm-libsignal-0.102.2-swarm.1 SHA256SUMS.txt"/>
+         </artifact>
+         <artifact name="libsignal-client-0.102.2-swarm.1.module">
+            <sha256 value="75a52c03887166349ae128fb59d42e4fadd9f8261f3361b526a01f8feef39546" origin="swarm-libsignal-0.102.2-swarm.1 SHA256SUMS.txt"/>
+         </artifact>
+      </component>
 ```
 
 ### 4. What is inside
@@ -97,7 +112,7 @@ buildConfigField("org.signal.libsignal.net.Network.Environment", "LIBSIGNAL_NET_
 Replace the two libsignal lines (lines 14-15 at 8.30.0.1882) with:
 
 ```ruby
-ENV['LIBSIGNAL_FFI_PREBUILD_CHECKSUM'] = '<!-- SWARM_IOS_CHECKSUM -->'
+ENV['LIBSIGNAL_FFI_PREBUILD_CHECKSUM'] = '9efbb25e146e950ca8be531f2c5c822b7ae6ca659f66d500f2304c1ad8727a46'
 pod 'LibSignalClient', git: 'https://github.com/Swarm-Official/swarm-libsignal.git', tag: 'swarm-libsignal-0.102.3-swarm.1', testspecs: ["Tests"]
 ```
 
@@ -144,7 +159,60 @@ let net = Net(env: .swarm, userAgent: userAgent, buildVariant: .production)
 
 ## Verification
 
-<!-- SWARM_VERIFICATION -->
+### Android: release `swarm-libsignal-0.102.2-swarm.1`
+
+Built from `swarm-v0.102.2` at `90a3a9ff60ac6241ca2c2db4fec882e4ab6839ab` (upstream v0.102.2 plus the SWARM commits) by https://github.com/Swarm-Official/swarm-libsignal/actions/runs/36353915436; the same run published the `maven` branch and ran the consumer check.
+
+| File | SHA-256 |
+| --- | --- |
+| `libsignal-android-0.102.2-swarm.1.aar` | `6edcc0cf10d5d9c56c539e62bd157fe988039a0388642f0519df2f96b7410ad7` |
+| `libsignal-client-0.102.2-swarm.1.jar` | `1b029d0e4d9a8841d4e49ae9360711309d7a5635dfb92ebd43fe245adc22f1b2` |
+| `libsignal-jni-unstripped-0.102.2-swarm.1.tar.gz` | `5d934fa0f36f77406863190e737603cd6145243acae6390984e6c53dbffeea23` |
+| `swarm-libsignal-maven-0.102.2-swarm.1.zip` | `c855c7bde340fac31dcf1fdbc065a17f2afb28fc12b0ed4519e2d73db8d58332` |
+| `org/signal/libsignal-android/0.102.2-swarm.1/libsignal-android-0.102.2-swarm.1-dokka.jar` | `c6deada2fac53b8ea6523dbda77597b128006674616f140f04df23264c6d1aa3` |
+| `org/signal/libsignal-android/0.102.2-swarm.1/libsignal-android-0.102.2-swarm.1-javadoc.jar` | `c6deada2fac53b8ea6523dbda77597b128006674616f140f04df23264c6d1aa3` |
+| `org/signal/libsignal-android/0.102.2-swarm.1/libsignal-android-0.102.2-swarm.1.aar` | `6edcc0cf10d5d9c56c539e62bd157fe988039a0388642f0519df2f96b7410ad7` |
+| `org/signal/libsignal-android/0.102.2-swarm.1/libsignal-android-0.102.2-swarm.1.module` | `c8082e9da9a968d91ea8110c90f1fdf89cf33c4f177052737df98cb1c6efbf73` |
+| `org/signal/libsignal-android/0.102.2-swarm.1/libsignal-android-0.102.2-swarm.1.pom` | `920d095d1e64663c88ed88fd3fe1109c4f21fcdd89f0542913299cc454d481c9` |
+| `org/signal/libsignal-client/0.102.2-swarm.1/libsignal-client-0.102.2-swarm.1-dokka.jar` | `15038377809a7e20f3ec9c748d89b5474058c4823bc95ef662a490ead27148ae` |
+| `org/signal/libsignal-client/0.102.2-swarm.1/libsignal-client-0.102.2-swarm.1-javadoc.jar` | `1b08098cd7c32bb797a418991c5f6d6cc64211fea612c0c3372bd1a7cb0ee20b` |
+| `org/signal/libsignal-client/0.102.2-swarm.1/libsignal-client-0.102.2-swarm.1-sources.jar` | `9511377400817b2607683c755424d010f8b934875a26f19f895cdf7817bbd9bc` |
+| `org/signal/libsignal-client/0.102.2-swarm.1/libsignal-client-0.102.2-swarm.1.jar` | `1b029d0e4d9a8841d4e49ae9360711309d7a5635dfb92ebd43fe245adc22f1b2` |
+| `org/signal/libsignal-client/0.102.2-swarm.1/libsignal-client-0.102.2-swarm.1.module` | `75a52c03887166349ae128fb59d42e4fadd9f8261f3361b526a01f8feef39546` |
+| `org/signal/libsignal-client/0.102.2-swarm.1/libsignal-client-0.102.2-swarm.1.pom` | `130c7dd3345aabfd814ff8e6738d321b7618ec5749857e2f52e354d5ce2d0a4b` |
+
+```bash
+gh release download swarm-libsignal-0.102.2-swarm.1 -R Swarm-Official/swarm-libsignal --dir libsignal-0.102.2-swarm.1
+cd libsignal-0.102.2-swarm.1 && sha256sum -c --ignore-missing SHA256SUMS.txt
+```
+
+### iOS: release `swarm-libsignal-0.102.3-swarm.1`
+
+Built from `swarm-v0.102.3` at `d9aa96cb3d6cd64a7225bc3b534ef312904f4dbb` (upstream v0.102.3 plus the SWARM commits) by https://github.com/Swarm-Official/swarm-libsignal/actions/runs/36351934896; the same run linted the pod and ran the consumer check.
+
+| File | SHA-256 |
+| --- | --- |
+| `libsignal-client-ios-build-v0.102.3-swarm.1.tar.gz` | `9efbb25e146e950ca8be531f2c5c822b7ae6ca659f66d500f2304c1ad8727a46` |
+
+### What was tested, and where
+
+- SWARM - tests on `swarm-v0.102.2` at `90a3a9ff6`, the Android release commit: Rust (`cargo test -p libsignal-net`, `cargo test -p libsignal-bridge-types --lib`, `cargo fmt --check`), Java (JNI bindings checked by upstream's generator, the client test suite including the four SWARM tests, spotless), Swift (FFI header checked by upstream's generator, `swift test` including `SwarmNetTests`), swift-format and swiftlint with Xcode 26.3, Node: https://github.com/Swarm-Official/swarm-libsignal/actions/runs/36353914765
+- SWARM - tests on `swarm-v0.102.3` at `d9aa96cb3`, the iOS release commit: the same jobs: https://github.com/Swarm-Official/swarm-libsignal/actions/runs/36351711122
+- Android release run: the four Android ABIs and the Linux, macOS and Windows JNI libraries built on GitHub-hosted runners, each Android `libsignal_jni.so` contains `chat.swarm.green`; the Java client suite (484 tests, 0 failures) ran against the stripped Linux library that is in the JAR; consumer check: every Maven file served by `raw.githubusercontent.com` matches `SHA256SUMS.txt`, and a fresh Gradle 9.4.1 build resolved both artifacts from the `maven` branch and ran `new Network(Network.Environment.SWARM, ...)` from the published JAR: https://github.com/Swarm-Official/swarm-libsignal/actions/runs/36353915436
+- iOS release run: `libsignal_ffi.a` for device and both simulators built with Xcode 26.3, each contains `chat.swarm.green`; `pod lib lint` passed; consumer check: `pod install` from the tag, the podspec's script phase downloaded the archive from the release and checked it against the checksum, and Release builds for `iphonesimulator` and `iphoneos` succeeded: https://github.com/Swarm-Official/swarm-libsignal/actions/runs/36351934896
+- Not run: upstream's Android instrumented tests (they need an emulator or device). No app has
+  connected to a SWARM server with these builds yet.
+- On record, though unplanned: the first version of the Java and Swift SWARM tests sent a chat
+  connection through a refusing local HTTP proxy, and libsignal's proxy-then-direct fallback took
+  it straight to the real `chat.swarm.green`, which accepted an unauthenticated chat connection:
+  over HTTP/1.1 from the Swift tests on Linux
+  (https://github.com/Swarm-Official/swarm-libsignal/actions/runs/36344961672,
+  https://github.com/Swarm-Official/swarm-libsignal/actions/runs/36344961250), and over HTTP/2
+  from the Java tests on Linux and the Swift tests
+  (https://github.com/Swarm-Official/swarm-libsignal/actions/runs/36346259921,
+  https://github.com/Swarm-Official/swarm-libsignal/actions/runs/36346259378). Those were branch
+  builds, not the released artifacts, and the tests were replaced by the hermetic hostname tests
+  above.
 
 ## Making a new build
 
