@@ -12,7 +12,7 @@ on:
       tag:
         description: "Release tag to create/update"
         required: true
-        default: "swarm-libsignal-0.101.2-swarm.2"
+        default: "swarm-libsignal-0.101.2-swarm.3"
       include_darwin_x64:
         description: "Also build darwin-x64 (Intel Macs; doubles the macOS runner time)"
         type: boolean

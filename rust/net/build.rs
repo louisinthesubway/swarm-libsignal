@@ -32,10 +32,19 @@ fn main() {
 /// The file names, relative to `res/swarm/`, of the DER-encoded roots that are always trusted for
 /// SWARM services.
 ///
-/// These are the two public Let's Encrypt (Internet Security Research Group) roots, so an ordinary
-/// publicly trusted certificate for a `swarm.green` host validates. Signal's own roots are
-/// deliberately *not* here.
-const SWARM_BUILTIN_ROOT_DERS: &[&str] = &["isrg-root-x1.cer", "isrg-root-x2.cer"];
+/// These are the public Let's Encrypt (Internet Security Research Group) roots: the two roots in
+/// every OS trust store today (`isrg-root-x1.cer`, `isrg-root-x2.cer`), plus Let's Encrypt's
+/// next-generation roots (`isrg-root-ye.cer`, `isrg-root-yr.cer`, published at
+/// <https://letsencrypt.org/certificates/> as "ISRG Root YE" / "ISRG Root YR", not yet in OS trust
+/// stores but already cross-signed into some issuance chains). Pinning them now, before an OS trust
+/// store carries them, means a future chain that no longer cross-signs through X1/X2 still
+/// validates. Signal's own roots are deliberately *not* here.
+const SWARM_BUILTIN_ROOT_DERS: &[&str] = &[
+    "isrg-root-x1.cer",
+    "isrg-root-x2.cer",
+    "isrg-root-ye.cer",
+    "isrg-root-yr.cer",
+];
 
 /// Name of the environment variable holding the path of an optional extra PEM file.
 const EXTRA_ROOT_CA_PEM_VAR: &str = "SWARM_TLS_ROOT_CA_PEM";

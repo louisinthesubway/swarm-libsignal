@@ -6,7 +6,7 @@ This repository is a fork of [signalapp/libsignal](https://github.com/signalapp/
 | --- | --- |
 | Upstream base of `swarm-main` | **v0.101.2** = `eb7864c4d` (the version Signal-Desktop `abe80d3` pins) |
 | Also pushed, for reference | branch `upstream-main` = `e8cc2dddd` (upstream main as cloned 2026-09-22, node version 0.103.1), tags `upstream-v0.101.2`, `upstream-e8cc2dd` |
-| Node package | `@signalapp/libsignal-client` **0.101.2-swarm.2** (0.101.2-swarm.1 was the first release) |
+| Node package | `@signalapp/libsignal-client` **0.101.2-swarm.3** (0.101.2-swarm.1 was the first release; 0.101.2-swarm.2 added the HTTP/2 chat connection; 0.101.2-swarm.3 pins Let's Encrypt's next-generation roots) |
 
 Why v0.101.2 and not upstream main: Signal-Desktop pins `@signalapp/libsignal-client` at exactly
 `0.101.2`, and upstream main has moved to 0.103.1. Building the SWARM environment on top of the
@@ -31,16 +31,17 @@ which their terms forbid and which would leak SWARM traffic to a third party.
 
 | File | Change |
 | --- | --- |
-| `rust/net/res/swarm/isrg-root-x1.cer`, `isrg-root-x2.cer` | **new.** The two public Let's Encrypt (ISRG) roots, DER. Provenance and fingerprints: `rust/net/res/swarm/README.md`. |
-| `rust/net/res/swarm/README.md` | **new.** What the roots are and how to add a private SWARM CA. |
-| `rust/net/build.rs` | Generates `$OUT_DIR/swarm_root_ca_ders.rs`: the two roots above plus every certificate in the optional build-time PEM file named by `$SWARM_TLS_ROOT_CA_PEM` (default `rust/net/res/swarm/swarm-root-ca.pem`, git-ignored). Contains a 30-line base64/PEM reader so no build dependency was added. The protobuf part is untouched. |
-| `rust/net/src/certs.rs` | Adds `SWARM_ROOT_CERTIFICATES` (the generated list) and `NO_ROOT_CERTIFICATES` (an empty trust store). Adds tests asserting the ISRG fingerprints, that no Signal root is in the SWARM list, and that every DER parses. |
+| `rust/net/res/swarm/isrg-root-x1.cer`, `isrg-root-x2.cer` | The two public Let's Encrypt (ISRG) roots in every current OS trust store, DER. Provenance and fingerprints: `rust/net/res/swarm/README.md`. |
+| `rust/net/res/swarm/isrg-root-ye.cer`, `isrg-root-yr.cer` | **new (0.101.2-swarm.3).** Let's Encrypt's next-generation roots ("ISRG Root YE", "ISRG Root YR"), DER, pinned ahead of OS trust-store adoption so the chat connection keeps validating if `chat.swarm.green`'s chain stops cross-signing through X1/X2. Fetched directly from <https://letsencrypt.org/certificates/> and fingerprint-verified independently, not copied from a changelog. Provenance and fingerprints: `rust/net/res/swarm/README.md`. |
+| `rust/net/res/swarm/README.md` | What the roots are and how to add a private SWARM CA. |
+| `rust/net/build.rs` | Generates `$OUT_DIR/swarm_root_ca_ders.rs`: the four roots above (`SWARM_BUILTIN_ROOT_DERS`) plus every certificate in the optional build-time PEM file named by `$SWARM_TLS_ROOT_CA_PEM` (default `rust/net/res/swarm/swarm-root-ca.pem`, git-ignored). Contains a 30-line base64/PEM reader so no build dependency was added. The protobuf part is untouched. |
+| `rust/net/src/certs.rs` | Adds `SWARM_ROOT_CERTIFICATES` (the generated list) and `NO_ROOT_CERTIFICATES` (an empty trust store). Adds tests asserting the four ISRG fingerprints, that every pinned root's Organization is ISRG, that no Signal root is in the SWARM list, and that every DER parses. |
 | `rust/net/src/env.rs` | Adds `SWARM` and `SWARM_STAGING` environments, `EnclaveServices`, the `Env::enclave_services` field, and tests. `SWARM` dials HTTP/2 since `0.101.2-swarm.2`. See below. |
 | `rust/bridge/shared/types/src/net.rs` | `Environment::Swarm = 2`, `Environment::SwarmStaging = 3` and their mapping to the two new `Env`s. `set_censorship_circumvention_enabled` no longer panics when an environment has no reflector providers - it logs and does nothing. Tests for both. |
 | `rust/bridge/shared/testing/src/net_env.rs` | Sets the new `enclave_services` field on the localhost test environment (the mock server does stand in for CDSI/SVR). |
 | `node/ts/net.ts` | `Environment.Swarm = 2`, `Environment.SwarmStaging = 3`, documented. |
 | `node/ts/test/NetTest.ts` | `new Net({ env: Environment.Swarm })` and `Environment.SwarmStaging` construct, and `setCensorshipCircumventionEnabled(true)` does not throw. |
-| `node/package.json`, `node/package-lock.json` | Version `0.101.2-swarm.2`, repository points here, and a `"swarm"` block naming the upstream base and the chat host. |
+| `node/package.json`, `node/package-lock.json` | Version `0.101.2-swarm.3`, repository points here, and a `"swarm"` block naming the upstream base and the chat host. |
 | `.github/workflows/swarm-tests.yml` | **new.** `cargo test -p libsignal-net --lib`, `cargo test -p libsignal-bridge-types --lib`, `npm run tsc/lint/format -c`. |
 | `.github/workflows/swarm-node-release.yml` | **new.** Prebuilds for win32-x64, linux-x64, darwin-arm64 (darwin-x64 optional) attached to a GitHub Release, then the npm tarball. |
 | `.gitignore` | Ignores `rust/net/res/swarm/swarm-root-ca.pem`. |
@@ -70,9 +71,12 @@ exists on `staging.chat.swarm.green`.
 
 Both share these properties:
 
-- **TLS trust**: `SWARM_ROOT_CERTIFICATES` - the public Let's Encrypt roots, plus any private SWARM
-  root compiled in. A normal certificate for the host works. Signal's roots are not trusted, so a
-  SWARM build cannot complete a TLS handshake with Signal's servers even if pointed at one.
+- **TLS trust**: `SWARM_ROOT_CERTIFICATES` - the public Let's Encrypt roots (since `0.101.2-swarm.3`:
+  both roots in every current OS trust store, ISRG Root X1/X2, **and** Let's Encrypt's
+  next-generation roots ISRG Root YE/YR, pinned ahead of OS adoption - see
+  `rust/net/res/swarm/README.md`), plus any private SWARM root compiled in. A normal certificate for
+  the host works. Signal's roots are not trusted, so a SWARM build cannot complete a TLS handshake
+  with Signal's servers even if pointed at one.
 - **No DNS pinning**: no hardcoded fallback IP addresses (the resolver drops empty entries). Name
   resolution uses the system resolver first, with Cloudflare DNS-over-HTTPS as the fallback - that
   is upstream behaviour, and it is worth knowing that a failed system lookup means a query to

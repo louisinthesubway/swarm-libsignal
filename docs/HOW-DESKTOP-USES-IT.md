@@ -1,8 +1,10 @@
 # How SWARM Messenger Desktop uses this library
 
 For Opus M-A (desktop). This is the consumption guide for
-`@signalapp/libsignal-client` **0.101.2-swarm.2** (HTTP/2 chat connection, so usernames work;
-`0.101.2-swarm.1` was HTTP/1.1), built from
+`@signalapp/libsignal-client` **0.101.2-swarm.3** (pins Let's Encrypt's next-generation roots,
+ISRG Root YE/YR, alongside X1/X2, so the chat connection keeps validating if `chat.swarm.green`'s
+certificate chain ever stops cross-signing through X1/X2; `0.101.2-swarm.2` added the HTTP/2 chat
+connection so usernames work; `0.101.2-swarm.1` was HTTP/1.1), built from
 [Swarm-Official/swarm-libsignal](https://github.com/Swarm-Official/swarm-libsignal), branch
 `swarm-main`.
 
@@ -21,14 +23,14 @@ GitHub CLI (already authenticated as `brs-holding`):
 ```bash
 cd D:/swarm-messenger/Signal-Desktop
 mkdir -p vendor
-gh release download swarm-libsignal-0.101.2-swarm.2 \
+gh release download swarm-libsignal-0.101.2-swarm.3 \
   -R Swarm-Official/swarm-libsignal \
   --pattern 'signalapp-libsignal-client-*.tgz' \
   --dir vendor --clobber
-gh release download swarm-libsignal-0.101.2-swarm.2 \
+gh release download swarm-libsignal-0.101.2-swarm.3 \
   -R Swarm-Official/swarm-libsignal \
   --pattern 'SHA256SUMS.txt' --dir vendor --clobber
-sha256sum vendor/signalapp-libsignal-client-0.101.2-swarm.2.tgz
+sha256sum vendor/signalapp-libsignal-client-0.101.2-swarm.3.tgz
 ```
 
 Expected hashes: see `SHA256SUMS.txt` in the release, and the table at the bottom of this file.
@@ -49,7 +51,7 @@ In `Signal-Desktop/package.json`:
 
 ```diff
 -    "@signalapp/libsignal-client": "0.101.2",
-+    "@signalapp/libsignal-client": "file:./vendor/signalapp-libsignal-client-0.101.2-swarm.1.tgz",
++    "@signalapp/libsignal-client": "file:./vendor/signalapp-libsignal-client-0.101.2-swarm.3.tgz",
 ```
 
 then `pnpm install`. pnpm unpacks the tarball into the store; the import specifier
@@ -65,7 +67,7 @@ In `Signal-Desktop/package.json`:
 {
   "pnpm": {
     "overrides": {
-      "@signalapp/libsignal-client": "file:./vendor/signalapp-libsignal-client-0.101.2-swarm.1.tgz"
+      "@signalapp/libsignal-client": "file:./vendor/signalapp-libsignal-client-0.101.2-swarm.3.tgz"
     }
   }
 }
@@ -176,7 +178,7 @@ Only the chat websocket (and provisioning socket) comes from `Environment.Swarm`
 
 ```
 Workflow "SWARM - node prebuilds and release" (workflow_dispatch)
-  inputs: tag (default swarm-libsignal-0.101.2-swarm.2), include_darwin_x64
+  inputs: tag (default swarm-libsignal-0.101.2-swarm.3), include_darwin_x64
   jobs:   prepare -> build (linux-x64, win32-x64, darwin-arm64) -> package
 ```
 
